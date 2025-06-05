@@ -458,13 +458,12 @@ def show_citizen_interface():
                 if 'user_coordinates' not in st.session_state.simulation_data:
                     st.session_state.simulation_data['user_coordinates'] = {'lat': lat, 'lon': lon}
 
-                st.write("**Step 1: Click on the map to get coordinates**")
-
+                #st.write("**Step 1: Click on the map to get coordinates**")
                 # Display current coordinates
                 current_coords = st.session_state.simulation_data['user_coordinates']
                 st.success(f"📍 **Current Location:** {current_coords['lat']:.6f}, {current_coords['lon']:.6f}")
 
-                st.write("**Step 2: Enter or adjust your coordinates**")
+                st.write("**Step 1: Enter or adjust your coordinates**")
 
                 # Coordinate inputs
                 col_lat, col_lon = st.columns(2)
@@ -490,14 +489,14 @@ def show_citizen_interface():
                     st.session_state.simulation_data['user_coordinates'] = {'lat': new_lat, 'lon': new_lon}
                     st.rerun()
 
-                st.write("**Step 3: Find evacuation route**")
+                st.write("**Step 2: Find evacuation route**")
 
                 if st.button("🚨 FIND BEST EVACUATION ROUTE", type="primary", use_container_width=True):
                     coords = st.session_state.simulation_data['user_coordinates']
                     find_best_evacuation_route(coords['lat'], coords['lon'], walking_speed)
 
             with col2:
-                st.subheader("Interactive Map - Click to Get Coordinates")
+                st.subheader("Evacuation Map")
 
                 if 'current_impact' in st.session_state.simulation_data:
                     impact = st.session_state.simulation_data['current_impact']
