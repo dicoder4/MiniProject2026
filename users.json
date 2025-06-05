@@ -1,0 +1,20 @@
+{
+  "admin": {
+    "password": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "role": "researcher",
+    "name": "System Administrator",
+    "created": "2025-06-05T22:42:55.316645"
+  },
+  "researcher": {
+    "password": "381fa94c49882e0a06845ff8aa9df705412448592bc9a4e637dc3dcd0e543968",
+    "role": "researcher",
+    "name": "Emergency Researcher",
+    "created": "2025-06-05T22:42:55.316645"
+  },
+  "citizen": {
+    "password": "4b4b4c19fdc4b422ca5a52085c3ba8fd2087c62afb06dae791f8fb9c51c56b4b",
+    "role": "citizen",
+    "name": "Emergency Citizen",
+    "created": "2025-06-05T22:42:55.316645"
+  }
+}
