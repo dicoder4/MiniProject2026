@@ -1,0 +1,16 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "center_id": "H1",
+        "center_type": "hospital"
+      },
+      "geometry": {
+        "type": "Point",
+        "coordinates": [73.856, 18.516]
+      }
+    }
+  ]
+}

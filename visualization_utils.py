@@ -1,8 +1,37 @@
 import folium
 import geopandas as gpd
 from shapely.geometry import Point, LineString
+from traffic_utils import TrafficSimulator
 
-def create_flood_folium_map(lat, lon, people_gdf, impact, edges):
+
+def add_traffic_layer(m, traffic_data):
+    """Add traffic visualization layer to map"""
+    if not traffic_data:
+        return
+        
+    for route in traffic_data:
+        # Calculate congestion color based on traffic duration ratio
+        ratio = route['duration_in_traffic'] / route['duration']
+        if ratio > 2.0:
+            color = 'red'  # Heavy traffic
+        elif ratio > 1.5:
+            color = 'orange'  # Moderate traffic
+        else:
+            color = 'green'  # Light traffic
+            
+        # Add route to map with traffic coloring
+        if 'geometry' in route:
+            coords = [[coord[1], coord[0]] for coord in route['geometry'].coords]
+            folium.PolyLine(
+                locations=coords,
+                color=color,
+                weight=4,
+                opacity=0.8,
+                popup=f"Traffic delay: {(ratio-1)*100:.1f}%"
+            ).add_to(m)
+
+def create_flood_folium_map(lat, lon, people_gdf, impact, edges, api_key=None):
+    """Create a Folium map showing flood simulation results with traffic data"""
     """
     Create a Folium map showing flood simulation results with gradient colors.
     """
@@ -17,6 +46,21 @@ def create_flood_folium_map(lat, lon, people_gdf, impact, edges):
             weight=1,
             opacity=0.7
         ).add_to(m)
+
+    # Add traffic layer if API key is provided
+    if api_key:
+        traffic_sim = TrafficSimulator(api_key)
+        # Generate some sample destinations around the center
+        radius = 0.01  # About 1km
+        destinations = [
+            (lat + radius, lon),
+            (lat - radius, lon),
+            (lat, lon + radius),
+            (lat, lon - radius)
+        ]
+        traffic_data = traffic_sim.get_area_traffic(lat, lon, destinations)
+        add_traffic_layer(m, traffic_data)
+    
     
     # Add flood zones with gradient colors (ENHANCED FROM COLAB)
     if not impact['flood_gdf'].empty:

@@ -18,7 +18,7 @@ import warnings
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 warnings.filterwarnings('ignore')
-
+from traffic_utils import TrafficSimulator
 # Import authentication components
 from auth_components import show_login_page, check_authentication, show_user_info, require_role
 from citizen_interface import show_citizen_interface
@@ -41,6 +41,8 @@ from network_utils import prepare_safe_centers, assign_people_to_centers_with_ca
 from visualization_utils import create_flood_folium_map, create_evacuation_folium_map
 from risk_assessment import calculate_risk_level, generate_risk_recommendations
 
+
+GOOGLE_MAPS_API_KEY = "AIzaSyAR43jUoPTiNpTyqj8jlJcupR2-g9OFHKo"
 # Page config
 st.set_page_config(
     page_title="🌊 Flood Evacuation Planning System",
@@ -484,11 +486,19 @@ def show_researcher_interface():
                     simulator = st.session_state.simulation_data['simulator']
                     
                     # Create flood simulation map using your function
+                    # flood_map = create_flood_folium_map(
+                    #     lat, lon, 
+                    #     simulator.people_gdf, 
+                    #     impact,
+                    #     st.session_state.simulation_data['edges']
+                    # )
                     flood_map = create_flood_folium_map(
-                        lat, lon, 
-                        simulator.people_gdf, 
-                        impact,
-                        st.session_state.simulation_data['edges']
+                        lat=lat,
+                        lon=lon,
+                        people_gdf=simulator.people_gdf,
+                        impact=impact,
+                        edges=st.session_state.simulation_data['edges'],
+                        api_key=GOOGLE_MAPS_API_KEY
                     )
                     
                     st_folium(flood_map, width=700, height=500)
