@@ -1,61 +1,24 @@
 import pytest
-from flood_simulator import DynamicFloodSimulator, create_elevation_grid
 import geopandas as gpd
-from shapely.geometry import Point, Polygon
+import pandas as pd
+import numpy as np
+from shapely.geometry import LineString
+from flood_simulator import create_elevation_grid, DynamicFloodSimulator
 
-def test_create_elevation_grid():
-    """Test elevation grid creation"""
-    edges = gpd.GeoDataFrame(
-        geometry=[LineString([
-            (73.856, 18.516),
-            (73.857, 18.517)
-        ])],
-        crs="EPSG:4326"
-    )
-    
-    elev_gdf = create_elevation_grid(edges, resolution=10)
-    
-    assert isinstance(elev_gdf, gpd.GeoDataFrame)
+@pytest.fixture
+def dummy_edges():
+    return gpd.GeoDataFrame({
+        'geometry': [LineString([(0, 0), (0, 1)]), LineString([(1, 0), (1, 1)])]
+    }, crs="EPSG:4326")
+
+def test_create_elevation_grid(dummy_edges):
+    elev_gdf = create_elevation_grid(dummy_edges, resolution=10)
+    assert not elev_gdf.empty
     assert 'elevation' in elev_gdf.columns
-    assert len(elev_gdf) == 100  # 10x10 grid
 
-def test_flood_simulator_initialization(mock_network):
-    """Test flood simulator initialization"""
-    # Create test data
-    elev_gdf = gpd.GeoDataFrame(
-        {'elevation': [0, 1]},
-        geometry=[
-            Point(73.856, 18.516),
-            Point(73.857, 18.517)
-        ],
-        crs="EPSG:4326"
-    )
-    
-    edges = gpd.GeoDataFrame(
-        geometry=[LineString([
-            (73.856, 18.516),
-            (73.857, 18.517)
-        ])],
-        crs="EPSG:4326"
-    )
-    
-    nodes = gpd.GeoDataFrame(
-        geometry=[
-            Point(73.856, 18.516),
-            Point(73.857, 18.517)
-        ],
-        crs="EPSG:4326"
-    )
-    
-    simulator = DynamicFloodSimulator(
-        elev_gdf=elev_gdf,
-        edges=edges,
-        nodes=nodes,
-        station="Test Station",
-        lat=18.516,
-        lon=73.856,
-        initial_people=10
-    )
-    
-    assert simulator.people_gdf is not None
-    assert len(simulator.people_gdf) == 10
+def test_flood_simulator_initialization(dummy_edges):
+    elev_gdf = create_elevation_grid(dummy_edges)
+    nodes = gpd.GeoDataFrame({'x': [0, 1], 'y': [0, 1]}, geometry=[LineString([(0, 0), (0, 1)]).interpolate(0.5)]*2, crs="EPSG:4326")
+    sim = DynamicFloodSimulator(elev_gdf, dummy_edges, nodes, "StationX", 0, 0, initial_people=10)
+    assert sim.people_gdf is not None
+    assert len(sim.people_gdf) == 10

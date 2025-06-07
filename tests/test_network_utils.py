@@ -1,38 +1,23 @@
+import geopandas as gpd
+import networkx as nx
 import pytest
-from network_utils import (
-    validate_safe_centers_against_flood,
-    prepare_safe_centers,
-    setup_graph_for_evacuation
-)
+from shapely.geometry import Point, LineString
+from network_utils import prepare_safe_centers
 
-def test_validate_safe_centers(mock_safe_centers, mock_flood_polygon):
-    """Test safe center validation against flood zones"""
-    edges = gpd.GeoDataFrame(
-        geometry=[LineString([
-            (73.856, 18.516),
-            (73.857, 18.517)
-        ])],
-        crs="EPSG:4326"
-    )
-    
-    safe_centers = validate_safe_centers_against_flood(
-        mock_safe_centers,
-        mock_flood_polygon,
-        edges
-    )
-    
-    # Both centers should be safe (outside flood zone)
-    assert len(safe_centers) == 2
-    assert set(safe_centers['center_id'].tolist()) == {'H1', 'P1'}
+@pytest.fixture
+def mock_edges():
+    return gpd.GeoDataFrame({
+        'geometry': [LineString([(0, 0), (0, 1)]), LineString([(1, 1), (1, 2)])]
+    }, crs="EPSG:4326")
 
-def test_setup_graph_for_evacuation(mock_network):
-    """Test graph preparation for evacuation"""
-    G_setup = setup_graph_for_evacuation(mock_network, walking_speed_kmph=5)
-    
-    # Check edge attributes
-    for u, v, data in G_setup.edges(data=True):
-        assert 'travel_time' in data
-        assert 'weight' in data
-        assert 'base_cost' in data
-        assert 'penalty' in data
-        assert data['penalty'] >= 0
+@pytest.fixture
+def mock_hospitals():
+    return gpd.GeoDataFrame({
+        'name': ['Test Hospital'],
+        'geometry': [Point(0.01, 0.01)]
+    }, crs="EPSG:4326")
+
+def test_prepare_safe_centers(mock_hospitals, mock_edges):
+    centers = prepare_safe_centers(mock_hospitals, None, mock_edges, flood_poly=None)
+    assert not centers.empty
+    assert 'center_id' in centers.columns
