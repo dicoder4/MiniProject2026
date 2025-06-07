@@ -15,6 +15,13 @@ import networkx as nx
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from shapely.geometry import Point, LineString
+# Add this import at the top with other imports
+from emergency_notifications import send_sos_alert, send_evacuation_plan
+import os
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Import your existing modules
 from flood_simulator import DynamicFloodSimulator, create_elevation_grid
@@ -29,6 +36,112 @@ from evacuation_algorithms import (
 from network_utils import prepare_safe_centers
 from visualization_utils import create_flood_folium_map, create_evacuation_folium_map
 from risk_assessment import calculate_risk_level
+def send_emergency_sos_alert(user_lat, user_lon, algorithm, evacuation_time):
+    """Send emergency SOS alert to user and authorities"""
+    try:
+        # Get user data from session state - ENSURE these are populated
+        user_data = {
+            'name': st.session_state.get('user_name', 'Unknown User'),
+            'email': st.session_state.get('user_email', ''),  # From users.json
+            'phone': st.session_state.get('user_phone', '')   # From users.json
+        }
+        
+        # VALIDATION: Check if email and phone are available
+        if not user_data['email']:
+            st.error("❌ No email address found. Please update your profile.")
+            return
+        
+        if not user_data['phone']:
+            st.warning("⚠️ No phone number found. SMS alerts will not be sent.")
+        
+        # Get evacuation data
+        evacuation_data = {
+            'best_algorithm': algorithm,
+            'best_time': evacuation_time,
+            'destination': 'Safe Center'  # You can make this more specific
+        }
+        
+        # Get location data
+        location_data = {
+            'lat': user_lat,
+            'lon': user_lon
+        }
+        
+        with st.spinner("🚨 Sending SOS alert..."):
+            results = send_sos_alert(user_data, evacuation_data, location_data)
+            
+            # Display results
+            st.success("🚨 **SOS ALERT SENT!**")
+            
+            if results['user_sms']:
+                st.success("✅ SMS sent to your phone")
+            elif user_data['phone']:
+                st.warning("⚠️ SMS failed - check phone number")
+            
+            if results['user_email']:
+                st.success("✅ Email sent to you")
+            elif user_data['email']:
+                st.warning("⚠️ Email failed - check email address")
+            
+            if results['authority_email']:
+                st.success("✅ Alert sent to authorities")
+            else:
+                st.error("❌ Failed to notify authorities")
+            
+            st.info("📞 **Emergency services have been notified of your location and situation.**")
+            
+    except Exception as e:
+        st.error(f"❌ Failed to send SOS alert: {e}")
+
+def send_evacuation_plan_email(user_lat, user_lon, algorithm, evacuation_time):
+    """Send evacuation plan via email"""
+    try:
+        user_data = {
+            'name': st.session_state.get('user_name', 'Unknown User'),
+            'email': st.session_state.get('user_email', ''),
+            'phone': st.session_state.get('user_phone', '')
+        }
+        
+        evacuation_plan = {
+            'details': f"""
+            <h4>🚶 Your Evacuation Route:</h4>
+            <ul>
+                <li><strong>Algorithm:</strong> {algorithm}</li>
+                <li><strong>Estimated Time:</strong> {evacuation_time:.0f} minutes</li>
+                <li><strong>Your Location:</strong> {user_lat:.6f}, {user_lon:.6f}</li>
+                <li><strong>Destination:</strong> Nearest Safe Center</li>
+            </ul>
+            
+            <h4>📋 Step-by-Step Instructions:</h4>
+            <ol>
+                <li>Follow the green route shown in the app</li>
+                <li>Head towards the flag marker (destination)</li>
+                <li>Keep this evacuation plan accessible offline</li>
+                <li>Call 112 if you encounter problems</li>
+                <li>Stay calm and move safely</li>
+            </ol>
+            
+            <h4>📞 Emergency Contacts:</h4>
+            <ul>
+                <li><strong>Emergency:</strong> 112</li>
+                <li><strong>Police:</strong> 100</li>
+                <li><strong>Medical:</strong> 108</li>
+                <li><strong>Fire:</strong> 101</li>
+            </ul>
+            """
+        }
+        
+        with st.spinner("📧 Sending evacuation plan..."):
+            success = send_evacuation_plan(user_data, evacuation_plan)
+            
+            if success:
+                st.success("✅ **Evacuation plan sent to your email!**")
+                st.info("📧 Check your inbox for detailed evacuation instructions.")
+            else:
+                st.error("❌ Failed to send evacuation plan")
+                
+    except Exception as e:
+        st.error(f"❌ Failed to send evacuation plan: {e}")
 
 def sync_coordinates():
     """Synchronize coordinates between clicked map and input fields"""
@@ -773,7 +886,24 @@ def find_best_evacuation_route(user_lat, user_lon, walking_speed):
                         st.error(f"❌ **{alg_name}**: Failed")
             else:
                 st.error("❌ No evacuation routes found. All routes may be blocked.")
+# After finding the best route, add SOS alert functionality
+            if best_algorithm:
+                st.success(f"✅ **Best Route Found:** {best_algorithm} algorithm")
+                st.write(f"⏱️ **Estimated Time:** {best_time:.1f} minutes")
                 
+                # ADD THIS NEW SECTION FOR SOS ALERTS
+                st.markdown("---")
+                st.subheader("🚨 Emergency Notifications")
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("🆘 SEND SOS ALERT", type="primary", use_container_width=True):
+                        send_emergency_sos_alert(user_lat, user_lon, best_algorithm, best_time)
+                
+                with col2:
+                    if st.button("📧 EMAIL EVACUATION PLAN", use_container_width=True):
+                        send_evacuation_plan_email(user_lat, user_lon, best_algorithm, best_time)        
         except Exception as e:
             st.error(f"❌ Error finding evacuation route: {e}")
 
@@ -883,7 +1013,68 @@ def show_evacuation_results_below_map():
         - Official government alerts
         - Social media updates
         """)
-
+def test_notification_system():
+    """Test the complete notification system"""
+    st.write("### 🧪 Test Notification System")
+    
+    # ADD THIS NEW GMAIL TEST BUTTON
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("📧 Test Gmail Connection"):
+            try:
+                from emergency_notifications import test_gmail_connection
+                if test_gmail_connection():
+                    st.success("✅ Gmail connection successful!")
+                else:
+                    st.error("❌ Gmail connection failed!")
+            except Exception as e:
+                st.error(f"❌ Gmail test failed: {e}")
+    
+    with col2:
+        if st.button("🔍 Debug User Data"):
+            try:
+                from emergency_notifications import debug_user_data_session
+                debug_user_data_session()
+            except Exception as e:
+                st.error(f"❌ Debug failed: {e}")
+    
+    if st.button("🧪 Test Email & SMS"):
+        # Get user data from session state
+        user_data = {
+            'name': st.session_state.get('user_name', 'Test User'),
+            'email': st.session_state.get('user_email', ''),
+            'phone': st.session_state.get('user_phone', '')
+        }
+        
+        st.write("**User Data Retrieved:**")
+        st.json(user_data)
+        
+        if user_data['email'] and user_data['phone']:
+            st.success("✅ Email and phone found - notifications should work!")
+            
+            # Test data
+            evacuation_data = {
+                'best_algorithm': 'Test Algorithm',
+                'best_time': 15.5,
+                'destination': 'Test Safe Center'
+            }
+            
+            location_data = {
+                'lat': 19.0760,
+                'lon': 72.8777
+            }
+            
+            if st.button("📧 Send Test Alert"):
+                try:
+                    from emergency_notifications import send_sos_alert
+                    results = send_sos_alert(user_data, evacuation_data, location_data)
+                    st.write("**Test Results:**")
+                    st.json(results)
+                except Exception as e:
+                    st.error(f"Test failed: {e}")
+        else:
+            st.error("❌ Missing email or phone - update your profile first!")
 def show_citizen_footer():
     """Show footer with emergency information for citizens"""
     st.markdown("---")

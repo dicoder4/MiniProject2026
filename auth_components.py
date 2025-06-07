@@ -23,18 +23,24 @@ class AuthManager:
                     "password": self.hash_password("admin123"),
                     "role": "researcher",
                     "name": "System Administrator",
+                    "email": "admin@floodsystem.com",
+                    "phone": "+911234567890",
                     "created": datetime.now().isoformat()
                 },
                 "researcher": {
                     "password": self.hash_password("research123"),
                     "role": "researcher", 
                     "name": "Emergency Researcher",
+                    "email": "researcher@floodsystem.com",
+                    "phone": "+911234567891",
                     "created": datetime.now().isoformat()
                 },
                 "citizen": {
                     "password": self.hash_password("citizen123"),
                     "role": "citizen",
                     "name": "Emergency Citizen",
+                    "email": "citizen@floodsystem.com",
+                    "phone": "+911234567892",
                     "created": datetime.now().isoformat()
                 }
             }
@@ -63,11 +69,11 @@ class AuthManager:
         if username in users:
             hashed_password = self.hash_password(password)
             if users[username]["password"] == hashed_password:
-                return users[username]
+                return users[username]  # This will now include email and phone
         return None
     
-    def register_user(self, username, password, role, name):
-        """Register new user"""
+    def register_user(self, username, password, role, name, email, phone):
+        """Register new user with email and phone"""
         users = self.load_users()
         if username in users:
             return False, "Username already exists"
@@ -76,6 +82,8 @@ class AuthManager:
             "password": self.hash_password(password),
             "role": role,
             "name": name,
+            "email": email,
+            "phone": phone,
             "created": datetime.now().isoformat()
         }
         self.save_users(users)
@@ -112,13 +120,19 @@ def show_login_page():
             if login_button:
                 if username and password:
                     user_data = auth_manager.authenticate(username, password)
+                    # In auth_components.py, in the authentication success section
+                    # In the login success section, REPLACE the existing code with:
                     if user_data:
                         st.session_state.authenticated = True
                         st.session_state.user_role = user_data["role"]
                         st.session_state.user_name = user_data["name"]
                         st.session_state.username = username
+                        # CRITICAL: Use the actual email and phone from users.json
+                        st.session_state.user_email = user_data.get("email", "")  # From JSON
+                        st.session_state.user_phone = user_data.get("phone", "")  # From JSON
                         st.session_state.login_time = datetime.now()
-                        
+
+                          
                         if remember_me:
                             st.session_state.remember_login = True
                         
@@ -128,12 +142,14 @@ def show_login_page():
                         st.error("❌ Invalid username or password")
                 else:
                     st.warning("⚠️ Please enter both username and password")
-            
+
             if guest_button:
                 st.session_state.authenticated = True
                 st.session_state.user_role = "citizen"
                 st.session_state.user_name = "Guest User"
                 st.session_state.username = "guest"
+                st.session_state.user_email = "guest@example.com"
+                st.session_state.user_phone = "+911234567890"
                 st.session_state.login_time = datetime.now()
                 st.info("🎭 Logged in as Guest (Citizen Access)")
                 st.rerun()
@@ -144,30 +160,40 @@ def show_login_page():
         with st.form("register_form"):
             new_username = st.text_input("Choose Username", placeholder="Enter desired username")
             new_name = st.text_input("Full Name", placeholder="Enter your full name")
+            new_email = st.text_input("Email Address", placeholder="Enter your email address")
+            new_phone = st.text_input("Phone Number", placeholder="Enter your phone number (e.g., +911234567890)")
             new_password = st.text_input("Password", type="password", placeholder="Enter password")
             confirm_password = st.text_input("Confirm Password", type="password", placeholder="Confirm password")
             role_choice = st.selectbox("Account Type", ["citizen", "researcher"], 
-                                     format_func=lambda x: "🏠 Citizen (Emergency Access)" if x == "citizen" else "🔬 Researcher (Full Access)")
+                                    format_func=lambda x: "🏠 Citizen (Emergency Access)" if x == "citizen" else "🔬 Researcher (Full Access)")
             
             register_button = st.form_submit_button("📝 Create Account", type="primary", use_container_width=True)
             
             if register_button:
-                if all([new_username, new_name, new_password, confirm_password]):
+                if all([new_username, new_name, new_email, new_phone, new_password, confirm_password]):
                     if new_password == confirm_password:
                         if len(new_password) >= 6:
-                            success, message = auth_manager.register_user(new_username, new_password, role_choice, new_name)
-                            if success:
-                                st.success(f"✅ {message}")
-                                st.info("You can now login with your new account")
+                            if "@" in new_email and "." in new_email:
+                                if new_phone.startswith("+91") and len(new_phone) >= 13:  # +91 + 10 digits
+                                    success, message = auth_manager.register_user(
+                                        new_username, new_password, role_choice, new_name, new_email, new_phone
+                                    )
+                                    if success:
+                                        st.success(f"✅ {message}")
+                                        st.info("You can now login with your new account")
+                                    else:
+                                        st.error(f"❌ {message}")
+                                else:
+                                    st.error("❌ Phone number must be in format +91XXXXXXXXXX (13 digits total)")
                             else:
-                                st.error(f"❌ {message}")
+                                st.error("❌ Please enter a valid email address")
                         else:
                             st.error("❌ Password must be at least 6 characters long")
                     else:
                         st.error("❌ Passwords do not match")
                 else:
                     st.warning("⚠️ Please fill in all fields")
-    
+
     with demo_tab:
         st.subheader("Demo Accounts")
         st.info("Use these demo accounts to explore the system:")
@@ -187,6 +213,8 @@ def show_login_page():
                 st.session_state.user_role = "researcher"
                 st.session_state.user_name = "Demo Researcher"
                 st.session_state.username = "researcher"
+                st.session_state.user_email = "researcher@floodsystem.com"
+                st.session_state.user_phone = "+911234567891"
                 st.session_state.login_time = datetime.now()
                 st.rerun()
         
@@ -197,12 +225,14 @@ def show_login_page():
             - Password: `citizen123`
             - Access: Emergency evacuation only
             """)
-            
+                        
             if st.button("🏠 Login as Citizen", use_container_width=True):
                 st.session_state.authenticated = True
                 st.session_state.user_role = "citizen"
                 st.session_state.user_name = "Demo Citizen"
                 st.session_state.username = "citizen"
+                st.session_state.user_email = "citizen@floodsystem.com"
+                st.session_state.user_phone = "+911234567892"
                 st.session_state.login_time = datetime.now()
                 st.rerun()
 
@@ -229,11 +259,13 @@ def show_user_info():
     """Display user information in sidebar"""
     if check_authentication():
         with st.sidebar:
-            st.markdown("---")
             st.markdown("### 👤 User Information")
-            
+            st.markdown("---")            
             role_icon = "🔬" if st.session_state.user_role == "researcher" else "🏠"
-            role_name = "Researcher" if st.session_state.user_role == "researcher" else "Citizen"
+            role_name = "Researcher" if st.session_state.user_role == "researcher" else "Citizen"   
+            # Show current info
+            user_email = st.session_state.get("user_email", "Not set")
+            user_phone = st.session_state.get("user_phone", "Not set")
             
             st.markdown(f"""
             **{role_icon} {st.session_state.user_name}**  
@@ -241,6 +273,45 @@ def show_user_info():
             Username: {st.session_state.username}
             """)
             
+    
+            # VALIDATION WARNINGS
+            if not user_email or user_email == "Not set":
+                st.error("⚠️ Email required for SOS alerts!")
+            else:
+                st.success(f"✅ Email: {user_email}")
+            
+            if not user_phone or user_phone == "Not set":
+                st.warning("⚠️ Phone recommended for SMS alerts")
+            else:
+                st.success(f"✅ Phone: {user_phone}")
+            
+            # Profile update section
+            with st.expander("✏️ Update Profile"):
+                new_email = st.text_input("Email", value=user_email if user_email != "Not set" else "")
+                new_phone = st.text_input("Phone", value=user_phone if user_phone != "Not set" else "", 
+                                        placeholder="+917338199014")
+                
+                if st.button("💾 Update Profile"):
+                    if new_email and "@" in new_email:
+                        if new_phone and new_phone.startswith("+91") and len(new_phone) >= 13:
+                            # Update session state
+                            st.session_state.user_email = new_email
+                            st.session_state.user_phone = new_phone
+                            
+                            # UPDATE JSON FILE as well
+                            auth_manager = AuthManager()
+                            users = auth_manager.load_users()
+                            if st.session_state.username in users:
+                                users[st.session_state.username]["email"] = new_email
+                                users[st.session_state.username]["phone"] = new_phone
+                                auth_manager.save_users(users)
+                            
+                            st.success("✅ Profile updated!")
+                            st.rerun()
+                        else:
+                            st.error("❌ Phone must be in format +91XXXXXXXXXX")
+                    else:
+                        st.error("❌ Valid email required")
             # Session info
             if 'login_time' in st.session_state:
                 login_time = st.session_state.login_time
@@ -248,7 +319,7 @@ def show_user_info():
                 st.markdown(f"Session: {session_duration.seconds // 60} min")
             
             # Logout button
-            if st.button("🚪 Logout", use_container_width=True):
+            if st.button("Logout", use_container_width=True):
                 # Clear session state
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
