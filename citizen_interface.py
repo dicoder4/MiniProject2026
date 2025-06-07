@@ -979,23 +979,39 @@ def show_evacuation_results_below_map():
         
         # Use sequential layout instead of columns to avoid nesting
         st.metric("🏆 Best Algorithm", best_algorithm)
-        st.metric("⏱️ Evacuation Time", f"{time_taken:.0f} min")
-        st.metric("🏥 Destination", destination)
+        st.metric("⏱️ Evacuation Time", f"{time_taken:.1f} minutes")
+        st.metric("🎯 Destination", destination)
+
+        # Show step-by-step instructions
+        st.markdown("### 📋 Evacuation Instructions")
+        st.write("1. 🚶 Follow the GREEN route on the map above")
+        st.write("2. 🏃 Head towards the flag marker (destination)")
+        st.write("3. 🚨 Stay calm and move quickly but safely")
+        st.write("4. 📞 Call 112 if you encounter any problems")
+        st.write("5. ⚠️ Do not return until authorities declare it safe")
+
+        st.markdown("---")
+        st.markdown("### 📞 Emergency Contacts")
+        st.write("- **Emergency Services:** 112")
+        st.write("- **Police:** 100") 
+        st.write("- **Medical Emergency:** 108")
+        st.write("- **Fire Department:** 101")
+
+        # ADD SOS ALERT BUTTONS HERE
+        st.markdown("---")
+        st.subheader("🚨 Emergency Notifications")
         
-        # Step-by-step instructions
-        st.subheader("📋 Your Evacuation Instructions")
+        col1, col2 = st.columns(2)
         
-        with st.expander(f"🚶 Route to {destination} ({time_taken:.0f} min)", expanded=True):
-            st.write(f"**🏥 Destination:** {destination}")
-            st.write(f"**⏱️ Estimated Time:** {time_taken:.0f} minutes")
-            st.write(f"**🚶 Walking Speed:** {evac_result['walking_speed']} km/h")
-            
-            st.write("**📍 Directions:**")
-            st.write("1. 🚶 Follow the GREEN route on the map above")
-            st.write("2. 🏥 Head towards the FLAG marker (destination)")
-            st.write("3. 📱 Keep this map open for navigation")
-            st.write("4. ⚠️ Stay alert and follow emergency instructions")
-            st.write("5. 📞 Call 112 if you encounter any problems")
+        with col1:
+            if st.button("🆘 SEND SOS ALERT", type="primary", use_container_width=True, key="citizen_sos_below_map"):
+                user_coords = st.session_state.simulation_data['user_coordinates']
+                send_emergency_sos_alert(user_coords['lat'], user_coords['lon'], best_algorithm, time_taken)
+        
+        with col2:
+            if st.button("📧 EMAIL EVACUATION PLAN", use_container_width=True, key="citizen_email_below_map"):
+                user_coords = st.session_state.simulation_data['user_coordinates']
+                send_evacuation_plan_email(user_coords['lat'], user_coords['lon'], best_algorithm, time_taken)
         
         # Emergency contacts
         st.subheader("📞 Emergency Contacts")
@@ -1095,3 +1111,58 @@ def show_citizen_footer():
 
 # Make sure this is properly exported
 __all__ = ['show_citizen_interface', 'find_best_evacuation_route', 'generate_mock_centers', 'show_evacuation_results_below_map', 'show_citizen_footer', 'sync_coordinates']
+
+def show_citizen_footer():
+    """Display citizen-specific footer"""
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; padding: 20px; background-color: #f8f9fa; border-radius: 10px; margin-top: 20px;'>
+        <h4>🚨 Emergency Flood Evacuation System - Citizen Portal</h4>
+        <p><strong>⚠️ IMPORTANT:</strong> This is a planning tool. In actual emergencies, always follow official guidance.</p>
+        <div style='margin-top: 15px;'>
+            <strong>Emergency Contact Numbers:</strong><br>
+            🚨 Emergency: 112 | 🚓 Police: 100 | 🚑 Medical: 108 | 🔥 Fire: 101
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def test_notification_system():
+    """Test the complete notification system"""
+    st.write("### 🧪 Test Notification System")
+    
+    if st.button("🧪 Test Email & SMS"):
+        # Get user data from session state
+        user_data = {
+            'name': st.session_state.get('user_name', 'Test User'),
+            'email': st.session_state.get('user_email', ''),
+            'phone': st.session_state.get('user_phone', '')
+        }
+        
+        st.write("**User Data Retrieved:**")
+        st.json(user_data)
+        
+        if user_data['email'] and user_data['phone']:
+            st.success("✅ Email and phone found - notifications should work!")
+            
+            # Test data
+            evacuation_data = {
+                'best_algorithm': 'Test Algorithm',
+                'best_time': 15.5,
+                'destination': 'Test Safe Center'
+            }
+            
+            location_data = {
+                'lat': 19.0760,
+                'lon': 72.8777
+            }
+            
+            if st.button("📧 Send Test Alert"):
+                try:
+                    from emergency_notifications import send_sos_alert
+                    results = send_sos_alert(user_data, evacuation_data, location_data)
+                    st.write("**Test Results:**")
+                    st.json(results)
+                except Exception as e:
+                    st.error(f"Test failed: {e}")
+        else:
+            st.error("❌ Missing email or phone - update your profile first!")
