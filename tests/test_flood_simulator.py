@@ -1,34 +1,49 @@
 import pytest
-import numpy as np
+from flood_simulator import DynamicFloodSimulator, create_elevation_grid
 import geopandas as gpd
 from shapely.geometry import Point, Polygon
-from flood_simulator import DynamicFloodSimulator, create_elevation_grid
 
 def test_create_elevation_grid():
-    # Create mock edges GeoDataFrame
-    geometry = [Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])]
-    edges = gpd.GeoDataFrame(geometry=geometry, crs="EPSG:4326")
+    """Test elevation grid creation"""
+    edges = gpd.GeoDataFrame(
+        geometry=[LineString([
+            (73.856, 18.516),
+            (73.857, 18.517)
+        ])],
+        crs="EPSG:4326"
+    )
     
-    # Test grid creation
     elev_gdf = create_elevation_grid(edges, resolution=10)
     
     assert isinstance(elev_gdf, gpd.GeoDataFrame)
     assert 'elevation' in elev_gdf.columns
     assert len(elev_gdf) == 100  # 10x10 grid
 
-def test_flood_simulator_initialization():
-    # Create mock data
+def test_flood_simulator_initialization(mock_network):
+    """Test flood simulator initialization"""
+    # Create test data
     elev_gdf = gpd.GeoDataFrame(
-        {'elevation': [0]},
-        geometry=[Point(0, 0)],
+        {'elevation': [0, 1]},
+        geometry=[
+            Point(73.856, 18.516),
+            Point(73.857, 18.517)
+        ],
         crs="EPSG:4326"
     )
+    
     edges = gpd.GeoDataFrame(
-        geometry=[Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])],
+        geometry=[LineString([
+            (73.856, 18.516),
+            (73.857, 18.517)
+        ])],
         crs="EPSG:4326"
     )
+    
     nodes = gpd.GeoDataFrame(
-        geometry=[Point(0, 0)],
+        geometry=[
+            Point(73.856, 18.516),
+            Point(73.857, 18.517)
+        ],
         crs="EPSG:4326"
     )
     
@@ -37,8 +52,8 @@ def test_flood_simulator_initialization():
         edges=edges,
         nodes=nodes,
         station="Test Station",
-        lat=0,
-        lon=0,
+        lat=18.516,
+        lon=73.856,
         initial_people=10
     )
     

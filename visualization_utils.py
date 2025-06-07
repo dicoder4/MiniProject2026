@@ -2,7 +2,8 @@ import folium
 import geopandas as gpd
 from shapely.geometry import Point, LineString
 from traffic_utils import TrafficSimulator
-
+import numpy as np
+from shapely.geometry import MultiPoint
 
 def add_traffic_layer(m, traffic_data):
     """Add traffic visualization layer to map"""
@@ -32,9 +33,6 @@ def add_traffic_layer(m, traffic_data):
 
 def create_flood_folium_map(lat, lon, people_gdf, impact, edges, api_key=None):
     """Create a Folium map showing flood simulation results with traffic data"""
-    """
-    Create a Folium map showing flood simulation results with gradient colors.
-    """
     # Create base map
     m = folium.Map(location=[lat, lon], zoom_start=13)
     
@@ -65,9 +63,7 @@ def create_flood_folium_map(lat, lon, people_gdf, impact, edges, api_key=None):
     # Add flood zones with gradient colors (ENHANCED FROM COLAB)
     if not impact['flood_gdf'].empty:
         for idx, row in impact['flood_gdf'].iterrows():
-            # Convert geometry to coordinates
             if hasattr(row.geometry, 'exterior'):
-                # Polygon
                 coords = [[coord[1], coord[0]] for coord in row.geometry.exterior.coords]
                 # Use gradient colors from the flood simulation
                 color = row.get('color', 'blue')

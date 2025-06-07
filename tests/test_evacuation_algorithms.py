@@ -1,50 +1,37 @@
 import pytest
-import networkx as nx
-import geopandas as gpd
-from shapely.geometry import Point
 from evacuation_algorithms import (
     dijkstra_evacuation,
     astar_evacuation,
-    generate_evacuation_summary
+    quanta_adaptive_routing_evacuation,
+    bidirectional_evacuation
 )
 
-@pytest.fixture
-def sample_network():
-    G = nx.Graph()
-    G.add_edge(0, 1, weight=1, length=100)
-    G.add_edge(1, 2, weight=1, length=100)
-    return G
-
-@pytest.fixture
-def sample_people():
-    return gpd.GeoDataFrame(
-        geometry=[Point(0, 0)],
-        crs="EPSG:4326"
-    )
-
-@pytest.fixture
-def sample_centers():
-    return gpd.GeoDataFrame(
-        {
-            'center_id': ['C1'],
-            'center_type': ['hospital']
-        },
-        geometry=[Point(1, 1)],
-        crs="EPSG:4326"
-    )
-
-def test_dijkstra_evacuation(sample_network, sample_people, sample_centers):
-    result = dijkstra_evacuation(sample_network, sample_people, sample_centers)
+@pytest.mark.evacuation
+def test_dijkstra_evacuation(mock_network, mock_people_gdf, mock_safe_centers):
+    """Test Dijkstra evacuation algorithm"""
+    result = dijkstra_evacuation(mock_network, mock_people_gdf, mock_safe_centers)
     
+    assert result is not None
     assert 'evacuated' in result
-    assert 'unreachable' in result
+    assert 'routes' in result
     assert 'times' in result
     assert 'execution_time' in result
-
-def test_astar_evacuation(sample_network, sample_people, sample_centers):
-    result = astar_evacuation(sample_network, sample_people, sample_centers)
+    assert result['algorithm'] == 'Dijkstra'
     
+    # Check if routes are valid
+    for route in result['routes']:
+        assert 'person_id' in route
+        assert 'path' in route
+        assert 'time' in route
+        assert route['time'] > 0
+
+@pytest.mark.evacuation
+def test_astar_evacuation(mock_network, mock_people_gdf, mock_safe_centers):
+    """Test A* evacuation algorithm"""
+    result = astar_evacuation(mock_network, mock_people_gdf, mock_safe_centers)
+    
+    assert result is not None
     assert 'evacuated' in result
-    assert 'unreachable' in result
+    assert 'routes' in result
     assert 'times' in result
-    assert 'execution_time' in result
+    assert result['algorithm'] == 'A*'

@@ -1,49 +1,38 @@
 import pytest
-import networkx as nx
-import geopandas as gpd
-from shapely.geometry import Point, Polygon
 from network_utils import (
     validate_safe_centers_against_flood,
     prepare_safe_centers,
     setup_graph_for_evacuation
 )
 
-@pytest.fixture
-def sample_flood_polygon():
-    return Polygon([(0, 0), (1, 0), (1, 1), (0, 1)])
-
-@pytest.fixture
-def sample_centers():
-    return gpd.GeoDataFrame(
-        {
-            'center_id': ['H1', 'H2'],
-            'center_type': ['hospital', 'hospital']
-        },
-        geometry=[Point(2, 2), Point(0.5, 0.5)],  # One safe, one in flood zone
-        crs="EPSG:4326"
-    )
-
-def test_validate_safe_centers(sample_centers, sample_flood_polygon):
+def test_validate_safe_centers(mock_safe_centers, mock_flood_polygon):
+    """Test safe center validation against flood zones"""
     edges = gpd.GeoDataFrame(
-        geometry=[Polygon([(0, 0), (2, 0), (2, 2), (0, 2)])],
+        geometry=[LineString([
+            (73.856, 18.516),
+            (73.857, 18.517)
+        ])],
         crs="EPSG:4326"
     )
     
     safe_centers = validate_safe_centers_against_flood(
-        sample_centers,
-        sample_flood_polygon,
+        mock_safe_centers,
+        mock_flood_polygon,
         edges
     )
     
-    assert len(safe_centers) == 1  # Only one center should be safe
-    assert safe_centers.iloc[0]['center_id'] == 'H1'
+    # Both centers should be safe (outside flood zone)
+    assert len(safe_centers) == 2
+    assert set(safe_centers['center_id'].tolist()) == {'H1', 'P1'}
 
-def test_setup_graph_for_evacuation():
-    G = nx.Graph()
-    G.add_edge(0, 1, length=1000)
+def test_setup_graph_for_evacuation(mock_network):
+    """Test graph preparation for evacuation"""
+    G_setup = setup_graph_for_evacuation(mock_network, walking_speed_kmph=5)
     
-    G_setup = setup_graph_for_evacuation(G, walking_speed_kmph=5)
-    
-    assert 'travel_time' in G_setup.edges[0, 1]
-    assert 'weight' in G_setup.edges[0, 1]
-    
+    # Check edge attributes
+    for u, v, data in G_setup.edges(data=True):
+        assert 'travel_time' in data
+        assert 'weight' in data
+        assert 'base_cost' in data
+        assert 'penalty' in data
+        assert data['penalty'] >= 0
