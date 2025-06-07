@@ -10,6 +10,16 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import logging
 from typing import List, Dict, Optional
+from twilio.rest import Client
+
+account_sid = 'AC4ec25d9275460e02e5f0cee617ef321b'
+auth_token = 'd13337f28d0d6f56529d11bd4e2e81db'
+twilio_number = '+16204481914'
+
+# Create Twilio client
+client = Client(account_sid, auth_token)
+
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -560,7 +570,29 @@ def get_flood_alert_email(user_name, state):
     """
     
     return user_email_subject, user_email_message
+STATE_SMS_MAP = {
+    "Maharashtra": "🚨 पूर इशारा! खालील सुरक्षित केंद्रांपैकी कोणत्याहीकडे स्थलांतर करा. / Flood Alert! Evacuate to any of these safe centers.",
+    "Karnataka": "🚨 ನೆರೆ ಎಚ್ಚರಿಕೆ! ಈ ಸುರಕ್ಷಿತ ಕೇಂದ್ರಗಳಲ್ಲಿ ಯಾವುದಕ್ಕೂ ಸ್ಥಳಾಂತರಗೊಳ್ಳಿ./ Flood Alert! Evacuate to any of these safe centers.",
+    "Default": "🚨 Flood Alert! Evacuate to any of these safe centers."
+}
 
+def send_sms_alert_auth(user_name, user_ph, state):
+    """Send a simple flood alert SMS in local language."""
+    try:
+        message_text = STATE_SMS_MAP.get(state, STATE_SMS_MAP["Default"])
+
+        message = client.messages.create(
+            body=message_text,
+            from_=twilio_number,
+            to=user_ph
+        )
+
+        print(f"✅ Message sent to {user_name} ({user_ph}) with SID: {message.sid}")
+        return message.sid
+
+    except Exception as e:
+        print(f"❌ Failed to send SMS to {user_ph}: {e}")
+        return None
 
 # Test the connection when this module is imported (optional)
 if __name__ == "__main__":

@@ -16,13 +16,14 @@ from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from shapely.geometry import Point, LineString
 # Add this import at the top with other imports
-from emergency_notifications import get_flood_alert_email
+from emergency_notifications import get_flood_alert_email, send_sms_alert_auth
 import os
 import json
 from dotenv import load_dotenv
 from plotly.subplots import make_subplots
 import plotly.express as px
 import plotly.graph_objects as go
+
 
 # Load environment variables
 load_dotenv()
@@ -165,7 +166,7 @@ def show_authority_interface():
         "🆘 Mass SOS & Mock Centers"
     ])
     
-    # --- Tab 1: Network Setup (Same as researcher) ---
+    # --- Tab 1: Setup & Network ---
     with tab1:
         st.header("🗺️ Road Network & Infrastructure")
         
@@ -902,6 +903,7 @@ def show_authority_interface():
                 
                 # Extract emails from users dictionary
                 user_emails = []
+                user_phone = []
                 for username, user_data in users.items():
                     if isinstance(user_data, dict) and 'email' in user_data:
                         email = user_data['email']
@@ -912,6 +914,16 @@ def show_authority_interface():
                                 'username': username
                             })
                             print(f"Found email for {username}: {email}")
+
+                    if isinstance(user_data, dict) and 'phone' in user_data:
+                        phone = user_data['phone']
+                        if phone:  # Check if email is not empty
+                            user_phone.append({
+                                'phone': phone,
+                                'name': user_data.get('name', username),
+                                'username': username
+                            })
+                            print(f"Found phone for {username}: {email}")
                 
                 print(f"Total emails found: {len(user_emails)}")
                 
@@ -929,17 +941,15 @@ def show_authority_interface():
                         username = user_info['username']
                         user_sub, user_message = get_flood_alert_email(name, selected_state)
                         try:
-                            status_text.text(f"Sending to {name} ({email})...")
                             print(email,user_sub, user_message)
                             # Send the email
-                            notification_system.send_email_alert(
+                            '''notification_system.send_email_alert(
                                 email, 
                                 user_sub, 
                                 user_message+html_message, 
                                 is_html=True
-                            )
+                            )'''
                             sent_count += 1
-                            st.success(f"✅ Sent to {name} ({email})")
                             
                         except Exception as e:
                             failed_count += 1
@@ -948,6 +958,22 @@ def show_authority_interface():
                         
                         # Update progress
                         progress_bar.progress((i + 1) / len(user_emails))
+
+                    str_centers = " "
+                    for c in mock_centers_info:
+                        str_centers += f"{c['name']} ({c['type']}) - {c['gmaps_link']} ({c['lat']:.5f}, {c['lon']:.5f})\n"
+                    for i, user_info in enumerate(user_phone):
+                        print(f"Sending SMS to {user_info['name']} ({user_info['phone']})")
+                        phone = user_info['phone']
+                        name = user_info['name']
+                        username = user_info['username']
+                        try:
+                        
+                            send_sms_alert_auth(name,phone,selected_state)
+                            sent_count += 1
+                            
+                        except Exception as e:
+                            failed_count += 1
                     
                     # Final status
                     status_text.text("Mass notification complete!")
