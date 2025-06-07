@@ -49,7 +49,7 @@ MiniProject2026/
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/MiniProject2026.git
+git clone https://github.com/dicoder4/MiniProject2026.git
 cd MiniProject2026
 ```
 
@@ -110,9 +110,3 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Google Maps for traffic integration
 - Streamlit for the web interface
 - Folium for map visualization
-
-## Contact
-
-For questions and support, please open an issue or contact the maintainers:
-- Email: your.email@example.com
-- Project Link: https://github.com/yourusername/MiniProject2026
