@@ -28,7 +28,7 @@ load_dotenv()
 
 # Import authentication components
 from auth_components import show_login_page, check_authentication, show_user_info, require_role
-from citizen_interface import show_citizen_interface
+from authority_interface import show_authority_interface
 
 # Import your existing modules
 from flood_simulator import DynamicFloodSimulator, create_elevation_grid
@@ -115,8 +115,8 @@ def main():
     show_user_info()
     
     # Route to appropriate interface based on role
-    if st.session_state.user_role == "citizen":
-        show_citizen_interface()
+    if st.session_state.user_role == "authority":
+        show_authority_interface()
     else:
         show_researcher_interface()
 def send_emergency_sos_alert_researcher(user_lat, user_lon, algorithm, evacuation_time):
@@ -601,7 +601,6 @@ def show_researcher_interface():
                         simulator.people_gdf, 
                         impact,
                         st.session_state.simulation_data['edges'],
-                        st.session_state.simulation_data['G']  # Pass G for traffic
                     )
                     
                     st_folium(flood_map, width=700, height=500)

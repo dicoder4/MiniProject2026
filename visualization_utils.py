@@ -1,80 +1,21 @@
 import folium
 import geopandas as gpd
 from shapely.geometry import Point, LineString
-import googlemaps
-import time
 
-GMAPS_API_KEY = "AIzaSyAR43jUoPTiNpTyqj8jlJcupR2-g9OFHKo"  # Replace with your actual key
-gmaps = googlemaps.Client(key=GMAPS_API_KEY)
-
-def get_traffic_for_edge(u, v, G):
-    """Fetch traffic congestion level for a road segment using Google Maps API."""
-    try:
-        origin = (G.nodes[u]['y'], G.nodes[u]['x'])
-        dest = (G.nodes[v]['y'], G.nodes[v]['x'])
-        # Use 'driving' mode and request traffic model
-        result = gmaps.directions(
-            origin, dest,
-            mode="driving",
-            departure_time="now",
-            traffic_model="best_guess"
-        )
-        if result and 'legs' in result[0]:
-            traffic_duration = result[0]['legs'][0]['duration_in_traffic']['value']
-            normal_duration = result[0]['legs'][0]['duration']['value']
-            # Traffic ratio: >1 means congestion
-            traffic_ratio = traffic_duration / normal_duration if normal_duration else 1
-            return traffic_ratio
-    except Exception as e:
-        print(f"Traffic API error for edge {u}-{v}: {e}")
-    return 1  # Default: no congestion
-
-def annotate_edges_with_traffic(G, edges):
-    """Annotate each edge with a traffic congestion score."""
-    traffic_scores = []
-    for idx, row in edges.iterrows():
-        try:
-            u, v = row['u'], row['v']
-            score = get_traffic_for_edge(u, v, G)
-            traffic_scores.append(score)
-            # Optionally, store in the graph for later use
-            for k in G[u][v]:
-                G[u][v][k]['traffic_score'] = score
-            time.sleep(0.1)  # To avoid API rate limits
-        except Exception as e:
-            traffic_scores.append(1)
-    edges['traffic_score'] = traffic_scores
-    return edges
-
-def get_traffic_color(score):
-    """Return color based on traffic score."""
-    if score < 1.2:
-        return 'green'
-    elif score < 1.5:
-        return 'orange'
-    else:
-        return 'red'
-    
-def create_flood_folium_map(lat, lon, people_gdf, impact, edges, G=None):
+def create_flood_folium_map(lat, lon, people_gdf, impact, edges):
     """
-    Create a Folium map showing flood simulation and traffic-aware roads.
+    Create a Folium map showing flood simulation results with gradient colors.
     """
-    # Annotate edges with traffic if G is provided
-    if G is not None and 'traffic_score' not in edges.columns:
-        edges = annotate_edges_with_traffic(G, edges)
-
+    # Create base map
     m = folium.Map(location=[lat, lon], zoom_start=13)
-
-    # Draw roads with traffic color
+    
+    # Add road network
     for idx, row in edges.iterrows():
-        score = row.get('traffic_score', 1)
-        color = get_traffic_color(score)
         folium.PolyLine(
             locations=[[coord[1], coord[0]] for coord in row.geometry.coords],
-            color=color,
-            weight=3,
-            opacity=0.8,
-            popup=f"Traffic: {score:.2f}"
+            color='gray',
+            weight=1,
+            opacity=0.7
         ).add_to(m)
     
     # Add flood zones with gradient colors (ENHANCED FROM COLAB)
