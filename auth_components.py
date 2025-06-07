@@ -35,12 +35,12 @@ class AuthManager:
                     "phone": "+911234567891",
                     "created": datetime.now().isoformat()
                 },
-                "citizen": {
-                    "password": self.hash_password("citizen123"),
-                    "role": "citizen",
-                    "name": "Emergency Citizen",
-                    "email": "citizen@floodsystem.com",
-                    "phone": "+911234567892",
+                "authority": {
+                    "password": self.hash_password("authority123"),
+                    "role": "authority",
+                    "name": "Disaster Response Authority",
+                    "email": "authority@floodsystem.com",
+                    "phone": "+911234567893",
                     "created": datetime.now().isoformat()
                 }
             }
@@ -77,7 +77,6 @@ class AuthManager:
         users = self.load_users()
         if username in users:
             return False, "Username already exists"
-        
         users[username] = {
             "password": self.hash_password(password),
             "role": role,
@@ -164,8 +163,8 @@ def show_login_page():
             new_phone = st.text_input("Phone Number", placeholder="Enter your phone number (e.g., +911234567890)")
             new_password = st.text_input("Password", type="password", placeholder="Enter password")
             confirm_password = st.text_input("Confirm Password", type="password", placeholder="Confirm password")
-            role_choice = st.selectbox("Account Type", ["citizen", "researcher"], 
-                                    format_func=lambda x: "🏠 Citizen (Emergency Access)" if x == "citizen" else "🔬 Researcher (Full Access)")
+            role_choice = st.selectbox("Account Type", ["authority", "researcher"], 
+                                    format_func=lambda x: "🏢 Disaster Response Authority" if x == "authority" else "🔬 Researcher (Full Access)")
             
             register_button = st.form_submit_button("📝 Create Account", type="primary", use_container_width=True)
             
@@ -220,19 +219,19 @@ def show_login_page():
         
         with col2:
             st.markdown("""
-            **🏠 Citizen Demo**
-            - Username: `citizen`
-            - Password: `citizen123`
-            - Access: Emergency evacuation only
+            **🏢 Authority Demo**
+            - Username: `authority`
+            - Password: `authority123`
+            - Access: Disaster response authority
             """)
                         
-            if st.button("🏠 Login as Citizen", use_container_width=True):
+            if st.button("🏢 Login as Authority", use_container_width=True):
                 st.session_state.authenticated = True
-                st.session_state.user_role = "citizen"
-                st.session_state.user_name = "Demo Citizen"
-                st.session_state.username = "citizen"
-                st.session_state.user_email = "citizen@floodsystem.com"
-                st.session_state.user_phone = "+911234567892"
+                st.session_state.user_role = "authority"
+                st.session_state.user_name = "Demo Authority"
+                st.session_state.username = "authority"
+                st.session_state.user_email = "authority@floodsystem.com"
+                st.session_state.user_phone = "+911234567893"
                 st.session_state.login_time = datetime.now()
                 st.rerun()
 
@@ -261,12 +260,11 @@ def show_user_info():
         with st.sidebar:
             st.markdown("### 👤 User Information")
             st.markdown("---")            
-            role_icon = "🔬" if st.session_state.user_role == "researcher" else "🏠"
-            role_name = "Researcher" if st.session_state.user_role == "researcher" else "Citizen"   
+            role_icon = "🔬" if st.session_state.user_role == "researcher" else "🏢"
+            role_name = "Researcher" if st.session_state.user_role == "researcher" else "Disaster Response Authority"   
             # Show current info
             user_email = st.session_state.get("user_email", "Not set")
             user_phone = st.session_state.get("user_phone", "Not set")
-            
             st.markdown(f"""
             **{role_icon} {st.session_state.user_name}**  
             Role: {role_name}  

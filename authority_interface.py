@@ -1,5 +1,5 @@
 """
-Enhanced Citizen Interface for Emergency Evacuation
+Enhanced Disaster Response Authority Interface for Emergency Evacuation
 Click map to get coordinates, enter them, and find best evacuation route
 """
 
@@ -37,7 +37,7 @@ from network_utils import prepare_safe_centers
 from visualization_utils import create_flood_folium_map, create_evacuation_folium_map
 from risk_assessment import calculate_risk_level
 def send_emergency_sos_alert(user_lat, user_lon, algorithm, evacuation_time):
-    """Send emergency SOS alert to user and authorities"""
+    """Send emergency SOS alert to user and authorities (Authority version)"""
     try:
         # Get user data from session state - ENSURE these are populated
         user_data = {
@@ -94,7 +94,7 @@ def send_emergency_sos_alert(user_lat, user_lon, algorithm, evacuation_time):
         st.error(f"❌ Failed to send SOS alert: {e}")
 
 def send_evacuation_plan_email(user_lat, user_lon, algorithm, evacuation_time):
-    """Send evacuation plan via email"""
+    """Send evacuation plan via email (Authority version)"""
     try:
         user_data = {
             'name': st.session_state.get('user_name', 'Unknown User'),
@@ -155,13 +155,13 @@ def sync_coordinates():
         # Return default coordinates from selected station
         return st.session_state.simulation_data.get('lat', 19.0760), st.session_state.simulation_data.get('lon', 72.8777)
 
-def show_citizen_interface():
-    """Enhanced citizen interface with coordinate input and smart evacuation"""
+def show_authority_interface():
+    """Disaster Response Authority interface with coordinate input and smart evacuation"""
     
     st.markdown("""
     <div style='background: linear-gradient(90deg, #dc3545 0%, #fd7e14 100%); padding: 1.5rem; border-radius: 10px; color: white; text-align: center; margin-bottom: 2rem;'>
         <h2>🚨 Emergency Flood Evacuation System</h2>
-        <p><strong>🏠 Citizen Portal - Emergency Planning & Evacuation</strong></p>
+        <p><strong>🏢 Disaster Response Authority Portal - Emergency Planning & Evacuation</strong></p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -213,8 +213,8 @@ def show_citizen_interface():
             st.error(f"Error loading or validating stations: {e}")
             return [], pd.DataFrame()
 
-    # Sidebar for citizens
-    st.sidebar.title("🏠 Citizen Controls")
+    # Sidebar for authorities
+    st.sidebar.title("🏢 Authority Controls")
     st.sidebar.markdown("---")
 
     # Location setup with CSV data
@@ -716,10 +716,10 @@ def show_citizen_interface():
         else:
             st.warning("⚠️ Please run flood simulation first")
 
-    # Add citizen-specific footer
-    show_citizen_footer()
+    # Add authority-specific footer
+    show_authority_footer()
     
-    # Additional sidebar information for citizens
+    # Additional sidebar information for authorities
     with st.sidebar:
         st.markdown("---")
         st.markdown("### 🆘 Emergency Guide")
@@ -737,7 +737,7 @@ def show_citizen_interface():
         
         st.markdown("### ⚠️ Safety Status")
         
-        # System status for citizens
+        # System status for authorities
         status_items = [
             ("Network Loaded", 'edges' in st.session_state.simulation_data),
             ("Flood Data Ready", 'current_impact' in st.session_state.simulation_data),
@@ -1091,8 +1091,7 @@ def test_notification_system():
                     st.error(f"Test failed: {e}")
         else:
             st.error("❌ Missing email or phone - update your profile first!")
-def show_citizen_footer():
-    """Show footer with emergency information for citizens"""
+def show_authority_footer():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; padding: 20px; background-color: #dc3545; color: white; border-radius: 10px; margin-top: 20px;'>
@@ -1110,6 +1109,7 @@ def show_citizen_footer():
     """, unsafe_allow_html=True)
 
 # Make sure this is properly exported
+<<<<<<< HEAD:citizen_interface.py
 __all__ = ['show_citizen_interface', 'find_best_evacuation_route', 'generate_mock_centers', 'show_evacuation_results_below_map', 'show_citizen_footer', 'sync_coordinates']
 
 def show_citizen_footer():
@@ -1166,3 +1166,6 @@ def test_notification_system():
                     st.error(f"Test failed: {e}")
         else:
             st.error("❌ Missing email or phone - update your profile first!")
+=======
+__all__ = ['show_authority_interface', 'find_best_evacuation_route', 'generate_mock_centers', 'show_evacuation_results_below_map', 'show_authority_footer', 'sync_coordinates']
+>>>>>>> 57db88595fd20bcbe7029c242177c7135cce7197:authority_interface.py
