@@ -17,6 +17,7 @@ plotly
 # Geocoding and traffic
 geopy
 googlemaps
+gmaps
 polyline
 streamlit-js-eval
 

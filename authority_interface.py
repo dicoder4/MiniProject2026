@@ -16,9 +16,13 @@ from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from shapely.geometry import Point, LineString
 # Add this import at the top with other imports
-from emergency_notifications import send_sos_alert, send_evacuation_plan
+from emergency_notifications import get_flood_alert_email
 import os
+import json
 from dotenv import load_dotenv
+from plotly.subplots import make_subplots
+import plotly.express as px
+import plotly.graph_objects as go
 
 # Load environment variables
 load_dotenv()
@@ -31,129 +35,13 @@ from evacuation_algorithms import (
     astar_evacuation, 
     quanta_adaptive_routing_evacuation, 
     bidirectional_evacuation,
-    generate_detailed_evacuation_log
+    generate_detailed_evacuation_log,
+    generate_evacuation_summary
 )
 from network_utils import prepare_safe_centers
 from visualization_utils import create_flood_folium_map, create_evacuation_folium_map
 from risk_assessment import calculate_risk_level
-def send_emergency_sos_alert(user_lat, user_lon, algorithm, evacuation_time):
-    """Send emergency SOS alert to user and authorities (Authority version)"""
-    try:
-        # Get user data from session state - ENSURE these are populated
-        user_data = {
-            'name': st.session_state.get('user_name', 'Unknown User'),
-            'email': st.session_state.get('user_email', ''),  # From users.json
-            'phone': st.session_state.get('user_phone', '')   # From users.json
-        }
-        
-        # VALIDATION: Check if email and phone are available
-        if not user_data['email']:
-            st.error("❌ No email address found. Please update your profile.")
-            return
-        
-        if not user_data['phone']:
-            st.warning("⚠️ No phone number found. SMS alerts will not be sent.")
-        
-        # Get evacuation data
-        evacuation_data = {
-            'best_algorithm': algorithm,
-            'best_time': evacuation_time,
-            'destination': 'Safe Center'  # You can make this more specific
-        }
-        
-        # Get location data
-        location_data = {
-            'lat': user_lat,
-            'lon': user_lon
-        }
-        
-        with st.spinner("🚨 Sending SOS alert..."):
-            results = send_sos_alert(user_data, evacuation_data, location_data)
-            
-            # Display results
-            st.success("🚨 **SOS ALERT SENT!**")
-            
-            if results['user_sms']:
-                st.success("✅ SMS sent to your phone")
-            elif user_data['phone']:
-                st.warning("⚠️ SMS failed - check phone number")
-            
-            if results['user_email']:
-                st.success("✅ Email sent to you")
-            elif user_data['email']:
-                st.warning("⚠️ Email failed - check email address")
-            
-            if results['authority_email']:
-                st.success("✅ Alert sent to authorities")
-            else:
-                st.error("❌ Failed to notify authorities")
-            
-            st.info("📞 **Emergency services have been notified of your location and situation.**")
-            
-    except Exception as e:
-        st.error(f"❌ Failed to send SOS alert: {e}")
 
-def send_evacuation_plan_email(user_lat, user_lon, algorithm, evacuation_time):
-    """Send evacuation plan via email (Authority version)"""
-    try:
-        user_data = {
-            'name': st.session_state.get('user_name', 'Unknown User'),
-            'email': st.session_state.get('user_email', ''),
-            'phone': st.session_state.get('user_phone', '')
-        }
-        
-        evacuation_plan = {
-            'details': f"""
-            <h4>🚶 Your Evacuation Route:</h4>
-            <ul>
-                <li><strong>Algorithm:</strong> {algorithm}</li>
-                <li><strong>Estimated Time:</strong> {evacuation_time:.0f} minutes</li>
-                <li><strong>Your Location:</strong> {user_lat:.6f}, {user_lon:.6f}</li>
-                <li><strong>Destination:</strong> Nearest Safe Center</li>
-            </ul>
-            
-            <h4>📋 Step-by-Step Instructions:</h4>
-            <ol>
-                <li>Follow the green route shown in the app</li>
-                <li>Head towards the flag marker (destination)</li>
-                <li>Keep this evacuation plan accessible offline</li>
-                <li>Call 112 if you encounter problems</li>
-                <li>Stay calm and move safely</li>
-            </ol>
-            
-            <h4>📞 Emergency Contacts:</h4>
-            <ul>
-                <li><strong>Emergency:</strong> 112</li>
-                <li><strong>Police:</strong> 100</li>
-                <li><strong>Medical:</strong> 108</li>
-                <li><strong>Fire:</strong> 101</li>
-            </ul>
-            """
-        }
-        
-        with st.spinner("📧 Sending evacuation plan..."):
-            success = send_evacuation_plan(user_data, evacuation_plan)
-            
-            if success:
-                st.success("✅ **Evacuation plan sent to your email!**")
-                st.info("📧 Check your inbox for detailed evacuation instructions.")
-            else:
-                st.error("❌ Failed to send evacuation plan")
-                
-    except Exception as e:
-        st.error(f"❌ Failed to send evacuation plan: {e}")
-
-def sync_coordinates():
-    """Synchronize coordinates between clicked map and input fields"""
-    # Get coordinates from various sources
-    clicked_coords = st.session_state.simulation_data.get('clicked_coordinates', {})
-    
-    # Use clicked coordinates if available, otherwise use defaults
-    if clicked_coords:
-        return clicked_coords['lat'], clicked_coords['lon']
-    else:
-        # Return default coordinates from selected station
-        return st.session_state.simulation_data.get('lat', 19.0760), st.session_state.simulation_data.get('lon', 72.8777)
 
 def show_authority_interface():
     """Disaster Response Authority interface with coordinate input and smart evacuation"""
@@ -269,10 +157,12 @@ def show_authority_interface():
         location_name = f"{station_name}, Manual Location"
 
     # Create tabs (same as researcher but without Algorithm Comparison and Analytics)
-    tab1, tab2, tab3 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🗺️ Network Setup", 
         "🌊 Flood Simulation", 
-        "🚶 Evacuation Planning"
+        "🚶 Evacuation Planning",
+        "📊 Analytics",
+        "🆘 Mass SOS & Mock Centers"
     ])
     
     # --- Tab 1: Network Setup (Same as researcher) ---
@@ -554,167 +444,523 @@ def show_authority_interface():
         else:
             st.warning("⚠️ Please load road network in the Setup tab first")
 
-    # --- Tab 3: Enhanced Evacuation Planning ---
+    # --- Tab 3: Evacuation Planning (Auto Best Algorithm) ---
     with tab3:
-        st.header("🚶 Smart Evacuation Planning")
-        
+        st.header("🚶 Evacuation Route Planning (Automatic Best Algorithm)")
+
         if 'current_impact' in st.session_state.simulation_data:
             col1, col2 = st.columns([1, 2])
-            
+
             with col1:
-                st.subheader("📍 Your Location")
+                st.subheader("Evacuation Parameters")
 
                 # Walking speed
                 walking_speed = st.slider("Walking Speed (km/h)", 3, 15, 5, 1)
 
-                # Initialize coordinates
-                if 'user_coordinates' not in st.session_state.simulation_data:
-                    st.session_state.simulation_data['user_coordinates'] = {'lat': lat, 'lon': lon}
+                # Prepare safe centers if not already
+                if st.button("🏥 Prepare Safe Centers"):
+                    with st.spinner("Identifying safe evacuation centers..."):
+                        try:
+                            hospitals_gdf = st.session_state.simulation_data.get('hospitals_gdf')
+                            police_gdf = st.session_state.simulation_data.get('police_gdf')
+                            edges = st.session_state.simulation_data['edges']
+                            impact = st.session_state.simulation_data['current_impact']
 
-                #st.write("**Step 1: Click on the map to get coordinates**")
-                # Display current coordinates
-                current_coords = st.session_state.simulation_data['user_coordinates']
-                st.success(f"📍 **Current Location:** {current_coords['lat']:.6f}, {current_coords['lon']:.6f}")
+                            safe_centers_gdf = prepare_safe_centers(
+                                hospitals_gdf, police_gdf, edges, impact['flood_poly']
+                            )
 
-                st.write("**Step 1: Enter or adjust your coordinates**")
+                            st.session_state.simulation_data['safe_centers_gdf'] = safe_centers_gdf
 
-                # Coordinate inputs
-                col_lat, col_lon = st.columns(2)
-                with col_lat:
-                    new_lat = st.number_input(
-                        "Latitude:", 
-                        value=current_coords['lat'], 
-                        format="%.6f",
-                        step=0.000001,
-                        key="lat_input"
-                    )
-                with col_lon:
-                    new_lon = st.number_input(
-                        "Longitude:", 
-                        value=current_coords['lon'], 
-                        format="%.6f",
-                        step=0.000001,
-                        key="lon_input"
-                    )
+                            if not safe_centers_gdf.empty:
+                                st.success(f"✅ Found {len(safe_centers_gdf)} safe evacuation centers")
+                                st.write("**Safe Centers:**")
+                                for idx, center in safe_centers_gdf.iterrows():
+                                    st.write(f"- {center.get('center_id', f'Center {idx+1}')}")
+                            else:
+                                st.warning("⚠️ No safe centers found outside flood zone")
+                        except Exception as e:
+                            st.error(f"Error preparing safe centers: {e}")
 
-                # Update coordinates if changed
-                if new_lat != current_coords['lat'] or new_lon != current_coords['lon']:
-                    st.session_state.simulation_data['user_coordinates'] = {'lat': new_lat, 'lon': new_lon}
-                    st.rerun()
+                # Run all algorithms and select the best
+                if st.button("🚁 Calculate Evacuation Routes (Auto-Select Best)", type="primary"):
+                    if 'safe_centers_gdf' in st.session_state.simulation_data:
+                        with st.spinner("Running all evacuation algorithms and selecting the best..."):
+                            try:
+                                G = st.session_state.simulation_data['G']
+                                impact = st.session_state.simulation_data['current_impact']
+                                safe_centers_gdf = st.session_state.simulation_data['safe_centers_gdf']
+                                flooded_people = impact['flooded_people']
+                                location_name = st.session_state.simulation_data.get('location_name', 'Unknown Location')
 
-                st.write("**Step 2: Find evacuation route**")
+                                # Run all algorithms
+                                algorithms = {
+                                    "Dijkstra": dijkstra_evacuation,
+                                    "A*": astar_evacuation,
+                                    "Quanta Adaptive Routing": quanta_adaptive_routing_evacuation,
+                                    "Bidirectional": bidirectional_evacuation
+                                }
+                                results = {}
+                                for name, func in algorithms.items():
+                                    try:
+                                        result = func(G, flooded_people, safe_centers_gdf, walking_speed)
+                                        results[name] = result
+                                    except Exception as e:
+                                        results[name] = {'evacuated': [], 'times': [], 'unreachable': [], 'execution_time': float('inf'), 'error': str(e)}
 
-                if st.button("🚨 FIND BEST EVACUATION ROUTE", type="primary", use_container_width=True):
-                    coords = st.session_state.simulation_data['user_coordinates']
-                    find_best_evacuation_route(coords['lat'], coords['lon'], walking_speed)
+                                # Select best: most evacuated, then fastest avg time
+                                best_algorithm = None
+                                best_result = None
+                                max_evacuated = -1
+                                min_avg_time = float('inf')
+                                for name, result in results.items():
+                                    evacuated = len(result.get('evacuated', []))
+                                    avg_time = np.mean(result.get('times', [])) if result.get('times') else float('inf')
+                                    if evacuated > max_evacuated or (evacuated == max_evacuated and avg_time < min_avg_time):
+                                        max_evacuated = evacuated
+                                        min_avg_time = avg_time
+                                        best_algorithm = name
+                                        best_result = result
+
+                                # Save to session state
+                                best_result['algorithm'] = best_algorithm
+                                st.session_state.simulation_data['evacuation_result'] = best_result
+
+                                # Generate detailed log
+                                detailed_log, center_stats = generate_detailed_evacuation_log(
+                                    best_result, safe_centers_gdf, location_name, best_algorithm
+                                )
+                                st.session_state.simulation_data['detailed_log'] = detailed_log
+                                st.session_state.simulation_data['center_stats'] = center_stats
+
+                                # Display results
+                                st.write("### 🚨 Evacuation Results")
+                                total_flooded = len(impact['flooded_people'])
+                                evacuated = len(best_result['evacuated'])
+                                unreachable = len(best_result['unreachable'])
+
+                                st.metric("People in Danger", total_flooded)
+                                st.metric("Successfully Evacuated", evacuated,
+                                        f"{evacuated/total_flooded*100:.1f}%" if total_flooded > 0 else "0%")
+                                st.metric("Unreachable", unreachable,
+                                        f"{unreachable/total_flooded*100:.1f}%" if total_flooded > 0 else "0%")
+
+                                st.write("### 🏥 Evacuation Center Assignments")
+                                center_assignments = generate_evacuation_summary(best_result, safe_centers_gdf)
+                                for center_id, data in center_assignments.items():
+                                    if data['count'] > 0:
+                                        st.write(f"**{center_id}** ({data['center_type'].title()})")
+                                        st.write(f"👥 {data['count']} people | ⏱️ {data['avg_time']:.1f} min avg")
+
+                                if best_result['times'] and len(best_result['times']) > 0:
+                                    avg_time = np.mean(best_result['times'])
+                                    max_time = max(best_result['times'])
+                                    st.write(f"**Average Evacuation Time:** {avg_time:.1f} minutes")
+                                    st.write(f"**Maximum Evacuation Time:** {max_time:.1f} minutes")
+                                else:
+                                    st.warning("⚠️ No successful evacuations - all people were unreachable")
+                                    st.write("**Average Evacuation Time:** N/A")
+                                    st.write("**Maximum Evacuation Time:** N/A")
+
+                                st.write(f"**Algorithm Used:** {best_algorithm}")
+                                st.write(f"**Execution Time:** {best_result['execution_time']:.2f} seconds")
+                            except Exception as e:
+                                st.error(f"Error calculating evacuation routes: {e}")
+                    else:
+                        st.warning("⚠️ Please prepare safe centers first")
 
             with col2:
-                st.subheader("Evacuation Map")
+                st.subheader("Evacuation Routes Map")
 
-                if 'current_impact' in st.session_state.simulation_data:
+                if 'evacuation_result' in st.session_state.simulation_data:
+                    evacuation_result = st.session_state.simulation_data['evacuation_result']
+                    safe_centers_gdf = st.session_state.simulation_data['safe_centers_gdf']
                     impact = st.session_state.simulation_data['current_impact']
-                    m = folium.Map(location=[lat, lon], zoom_start=13)
+                    G = st.session_state.simulation_data['G']
 
-                    # Add road network
-                    edges_data = st.session_state.simulation_data['edges']
-                    for idx, row in edges_data.iterrows():
-                        coords = list(row.geometry.coords)
-                        folium.PolyLine(
-                            locations=[[coord[1], coord[0]] for coord in coords],
-                            color='gray',
-                            weight=1,
-                            opacity=0.3
-                        ).add_to(m)
+                    # Create evacuation map
+                    evac_map = create_evacuation_folium_map(
+                        lat, lon, evacuation_result, safe_centers_gdf, impact, G
+                    )
 
-                    # Flood polygons
-                    if not impact['flood_gdf'].empty:
-                        for idx, row in impact['flood_gdf'].iterrows():
-                            if hasattr(row.geometry, 'exterior'):
-                                coords = [[coord[1], coord[0]] for coord in row.geometry.exterior.coords]
-                                color = row.get('color', 'red')
-                                folium.Polygon(
-                                    locations=coords,
-                                    color=color,
-                                    fill=True,
-                                    fillColor=color,
-                                    fillOpacity=0.4,
-                                    weight=2
-                                ).add_to(m)
+                    st_folium(evac_map, width=700, height=500)
 
-                    # Safe centers
-                    if 'safe_centers_gdf' in st.session_state.simulation_data:
-                        safe_centers_gdf = st.session_state.simulation_data['safe_centers_gdf']
-                        for idx, row in safe_centers_gdf.iterrows():
-                            icon_color = 'green'
-                            icon_name = 'home'
-                            if row.get('type') == 'hospital':
-                                icon_color = 'red'
-                                icon_name = 'plus'
-                            elif row.get('type') == 'police':
-                                icon_color = 'blue'
-                                icon_name = 'shield'
-                            folium.Marker(
-                                [row.geometry.y, row.geometry.x],
-                                popup=row.get('center_id', f'Center {idx+1}'),
-                                icon=folium.Icon(color=icon_color, icon=icon_name)
-                            ).add_to(m)
+                    # Enhanced evacuation log with download option
+                    with st.expander("📋 Detailed Evacuation Log"):
+                        # Show first 20 entries
+                        for log_entry in evacuation_result['log'][:20]:
+                            st.text(log_entry)
+                        if len(evacuation_result['log']) > 20:
+                            st.text(f"... and {len(evacuation_result['log']) - 20} more entries")
 
-                    # Current user marker
-                    folium.Marker(
-                        [current_coords['lat'], current_coords['lon']],
-                        popup=f"Your Location: {current_coords['lat']:.6f}, {current_coords['lon']:.6f}",
-                        icon=folium.Icon(color='orange', icon='map-pin')
-                    ).add_to(m)
+                        # Download detailed log button
+                        if 'detailed_log' in st.session_state.simulation_data:
+                            st.markdown("---")
+                            st.write("**📥 Download Options:**")
 
-                    # Add route if available
-                    if 'evacuation_result' in st.session_state.simulation_data:
-                        evac_result = st.session_state.simulation_data['evacuation_result']
-                        if evac_result.get('best_algorithm') and 'algorithm_results' in evac_result:
-                            best_result = evac_result['algorithm_results'][evac_result['best_algorithm']]
-                            if best_result.get('routes'):
-                                try:
-                                    G = st.session_state.simulation_data['G']
-                                    route = best_result['routes'][0]
-                                    if 'path' in route:
-                                        route_coords = [
-                                            [G.nodes[n]['y'], G.nodes[n]['x']] for n in route['path'] if n in G.nodes
-                                        ]
-                                        if len(route_coords) > 1:
-                                            folium.PolyLine(
-                                                locations=route_coords,
-                                                color='#00ff00',
-                                                weight=6,
-                                                opacity=0.8,
-                                                popup=f"Evacuation Route"
-                                            ).add_to(m)
-                                            folium.Marker(
-                                                route_coords[-1],
-                                                popup=f"Destination: {route.get('destination', 'Safe Center')}",
-                                                icon=folium.Icon(color='green', icon='flag')
-                                            ).add_to(m)
-                                except Exception as e:
-                                    pass
+                            # Download detailed log
+                            detailed_log = st.session_state.simulation_data['detailed_log']
+                            station_name = st.session_state.simulation_data.get('station_name', 'location')
+                            filename = f"evacuation_log_{station_name.replace(' ', '_')}_{evacuation_result.get('algorithm', 'best').replace(' ', '_')}.txt"
 
-                    # Make map clickable
-                    map_data = st_folium(m, width=700, height=500, key="main_evacuation_map")
-                    if map_data and map_data.get('last_clicked'):
-                        clicked_lat = map_data['last_clicked']['lat']
-                        clicked_lon = map_data['last_clicked']['lng']
-                        st.session_state.simulation_data['user_coordinates'] = {
-                            'lat': clicked_lat,
-                            'lon': clicked_lon
-                        }
-                        st.rerun()
+                            st.download_button(
+                                label="📄 Download Detailed Log",
+                                data=detailed_log,
+                                file_name=filename,
+                                mime="text/plain",
+                                help="Download comprehensive evacuation log with center-wise statistics"
+                            )
 
-                    # Evacuation result section
-                    if 'evacuation_result' in st.session_state.simulation_data:
-                        st.markdown("---")
-                        show_evacuation_results_below_map()
+                            # Download CSV summary
+                            if 'center_stats' in st.session_state.simulation_data:
+                                center_stats = st.session_state.simulation_data['center_stats']
+
+                                # Create CSV data
+                                csv_data = []
+                                csv_data.append("Center_ID,Center_Name,Center_Type,People_Evacuated,Avg_Time_Min,Min_Time_Min,Max_Time_Min,People_IDs")
+
+                                for center_id, stats in center_stats.items():
+                                    if stats['count'] > 0:
+                                        people_ids = ';'.join(map(str, stats['people_ids']))
+                                        csv_data.append(f"{center_id},{stats['center_name']},{stats['center_type']},{stats['count']},{stats['avg_time']:.1f},{stats['min_time']:.1f},{stats['max_time']:.1f},{people_ids}")
+
+                                csv_content = "\n".join(csv_data)
+                                csv_filename = f"evacuation_summary_{station_name.replace(' ', '_')}.csv"
+
+                                st.download_button(
+                                    label="📊 Download CSV Summary",
+                                    data=csv_content,
+                                    file_name=csv_filename,
+                                    mime="text/csv",
+                                    help="Download center-wise evacuation statistics as CSV"
+                                )
                 else:
-                    st.info("👆 Run flood simulation first to see the map")
-
+                    st.info("👆 Calculate evacuation routes to see visualization")
         else:
             st.warning("⚠️ Please run flood simulation first")
+
+    # --- Tab 4: Analytics ---
+    with tab4:
+        st.header("📊 Comprehensive Analytics Dashboard")
+        
+        # CHECK IF EVACUATION RESULT EXISTS IN SESSION STATE
+        if 'evacuation_result' in st.session_state.simulation_data:
+            evacuation_result = st.session_state.simulation_data['evacuation_result']
+            
+            # Check if there are any successful evacuations
+            if evacuation_result['times'] and len(evacuation_result['times']) > 0:
+                # Time series analysis
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("📈 Evacuation Timeline")
+                    
+                    times = sorted(evacuation_result['times'])
+                    
+                    # Create cumulative evacuation chart
+                    timeline_data = []
+                    for i, time_val in enumerate(times):
+                        timeline_data.append({
+                            'Time (minutes)': time_val,
+                            'People Evacuated': i + 1,
+                            'Cumulative %': (i + 1) / len(times) * 100
+                        })
+                    
+                    timeline_df = pd.DataFrame(timeline_data)
+                    
+                    fig = make_subplots(specs=[[{"secondary_y": True}]])
+                    
+                    fig.add_trace(
+                        go.Scatter(x=timeline_df['Time (minutes)'], y=timeline_df['People Evacuated'],
+                                  name="People Evacuated", line=dict(color='blue')),
+                        secondary_y=False,
+                    )
+                    
+                    fig.add_trace(
+                        go.Scatter(x=timeline_df['Time (minutes)'], y=timeline_df['Cumulative %'],
+                                  name="Completion %", line=dict(color='red')),
+                        secondary_y=True,
+                    )
+                    
+                    fig.update_layout(title="Evacuation Progress Over Time")
+                    fig.update_xaxes(title_text="Time (Minutes)")
+                    fig.update_yaxes(title_text="People Evacuated", secondary_y=False)
+                    fig.update_yaxes(title_text="Completion Percentage", secondary_y=True)
+                    
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    st.subheader("🎯 Performance Metrics")
+                    
+                    impact = st.session_state.simulation_data['current_impact']
+                    
+                    # Key metrics
+                    total_people = st.session_state.simulation_data['num_people']
+                    flooded_people = len(impact['flooded_people'])
+                    evacuated_people = len(evacuation_result['evacuated'])
+                    
+                    # Performance metrics with safe calculations
+                    st.metric("Evacuation Success Rate", 
+                             f"{evacuated_people/flooded_people*100:.1f}%" if flooded_people > 0 else "0%",
+                             f"{evacuated_people}/{flooded_people}")
+                    
+                    # Safe calculation for evacuation times
+                    avg_time = np.mean(evacuation_result['times'])
+                    max_time = max(evacuation_result['times'])
+                    st.metric("Average Evacuation Time", f"{avg_time:.1f} min")
+                    st.metric("Maximum Evacuation Time", f"{max_time:.1f} min")
+                    
+                    st.metric("Algorithm Performance", f"{evacuation_result['execution_time']:.2f} sec")
+                    st.metric("Algorithm Used", evacuation_result.get('algorithm', 'Unknown'))
+            else:
+                # No successful evacuations
+                st.error("❌ No successful evacuations found!")
+                st.warning("All people were unreachable. This could be due to:")
+                st.write("- Network connectivity issues")
+                st.write("- All safe centers being in flood zones")
+                st.write("- Graph coordinate system mismatches")
+                
+                # Show basic statistics
+                impact = st.session_state.simulation_data['current_impact']
+                total_people = st.session_state.simulation_data['num_people']
+                flooded_people_count = len(impact['flooded_people'])
+                
+                # Use sequential layout instead of nested columns
+                st.metric("Total People", total_people)
+                st.metric("People in Flood Zone", flooded_people_count)
+                st.metric("Unreachable", len(evacuation_result['unreachable']))
+
+            # Detailed Analytics Section (only if we have data)
+            if 'evacuation_result' in st.session_state.simulation_data and 'current_impact' in st.session_state.simulation_data:
+                st.subheader("🔍 Detailed Risk Analysis")
+                
+                impact = st.session_state.simulation_data['current_impact']
+                total_people = st.session_state.simulation_data['num_people']
+                
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    # Population distribution by risk
+                    safe_people_count = len(impact['safe_people'])
+                    flooded_people_count = len(impact['flooded_people'])
+                    evacuated_count = len(evacuation_result['evacuated'])
+                    unreachable_count = len(evacuation_result['unreachable'])
+                    
+                    risk_data = {
+                        'Risk Level': ['Safe', 'In Flood Zone', 'Evacuated', 'Unreachable'],
+                        'Population': [safe_people_count, flooded_people_count, evacuated_count, unreachable_count],
+                        'Percentage': [
+                            safe_people_count/total_people*100 if total_people > 0 else 0,
+                            flooded_people_count/total_people*100 if total_people > 0 else 0,
+                            evacuated_count/total_people*100 if total_people > 0 else 0,
+                            unreachable_count/total_people*100 if total_people > 0 else 0
+                        ]
+                    }
+                    risk_df = pd.DataFrame(risk_data)
+                    
+                    fig = px.pie(risk_df, values='Population', names='Risk Level',
+                                title='Population Distribution by Risk Status',
+                                color_discrete_map={
+                                    'Safe': '#28a745',
+                                    'In Flood Zone': '#fd7e14', 
+                                    'Evacuated': '#007bff',
+                                    'Unreachable': '#dc3545'
+                                })
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                with col2:
+                    # Infrastructure status
+                    blocked_roads = len(impact['blocked_edges'])
+                    total_roads = len(st.session_state.simulation_data['edges'])
+                    safe_centers_count = len(st.session_state.simulation_data.get('safe_centers_gdf', []))
+                    
+                    infra_data = {
+                        'Infrastructure': ['Roads (Blocked)', 'Roads (Clear)', 'Safe Centers'],
+                        'Count': [blocked_roads, total_roads - blocked_roads, safe_centers_count],
+                        'Status': ['Critical', 'Good', 'Available']
+                    }
+                    infra_df = pd.DataFrame(infra_data)
+                    
+                    fig = px.bar(infra_df, x='Infrastructure', y='Count',
+                                title='Infrastructure Status Overview',
+                                color='Status',
+                                color_discrete_map={
+                                    'Critical': '#dc3545',
+                                    'Good': '#28a745',
+                                    'Available': '#007bff'
+                                })
+                    st.plotly_chart(fig, use_container_width=True)
+                
+                # Summary report
+                st.subheader("📋 Comprehensive Situation Report")
+                
+                flood_level_pct = st.session_state.simulation_data.get('flood_level', 0) * 100
+                location_name = st.session_state.simulation_data.get('location_name', 'Unknown Location')
+                station_name = st.session_state.simulation_data.get('station_name', 'Unknown Station')
+                
+                # Safe calculations for times
+                if evacuation_result['times']:
+                    avg_evac_time = np.mean(evacuation_result['times'])
+                    max_evac_time = max(evacuation_result['times'])
+                else:
+                    avg_evac_time = 0
+                    max_evac_time = 0
+                
+                st.markdown(f"""
+                **📍 Location Details:**
+                - **Location:** {location_name}
+                - **Station:** {station_name}
+                - **Current Flood Level:** {flood_level_pct:.0f}% of maximum spread
+                
+                **👥 Population Impact:**
+                - **Total Population:** {total_people:,} people
+                - **People at Risk:** {flooded_people_count:,} ({flooded_people_count/total_people*100:.1f}%)
+                - **Successfully Evacuated:** {evacuated_count:,} ({evacuated_count/flooded_people_count*100:.1f}% of at-risk if flooded_people_count > 0 else 0)
+                - **Unreachable/Stranded:** {unreachable_count:,} people
+                
+                **🛣️ Infrastructure Status:**
+                - **Total Roads:** {total_roads:,}
+                - **Roads Blocked:** {blocked_roads:,} ({blocked_roads/total_roads*100:.1f}%)
+                - **Safe Centers Available:** {safe_centers_count}
+                
+                **⏱️ Evacuation Performance:**
+                - **Algorithm Used:** {evacuation_result.get('algorithm', 'Unknown')}
+                - **Average Evacuation Time:** {avg_evac_time:.1f} minutes
+                - **Maximum Evacuation Time:** {max_evac_time:.1f} minutes
+                - **Calculation Time:** {evacuation_result['execution_time']:.2f} seconds
+                """)
+                
+                # Risk assessment
+                population_at_risk_pct = flooded_people_count / total_people * 100 if total_people > 0 else 0
+                evacuation_success_rate = evacuated_count / flooded_people_count * 100 if flooded_people_count > 0 else 0
+                
+                if population_at_risk_pct > 50 or evacuation_success_rate < 70:
+                    st.markdown('<div class="alert-high">🔴 HIGH RISK: Immediate evacuation required</div>', unsafe_allow_html=True)
+                elif population_at_risk_pct > 20 or evacuation_success_rate < 85:
+                    st.markdown('<div class="alert-medium">🟡 MEDIUM RISK: Monitor situation closely</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="alert-low">🟢 LOW RISK: Situation under control</div>', unsafe_allow_html=True)
+        else:
+            st.info("🏃‍♂️ Complete the evacuation planning to see comprehensive analytics")
+
+    # --- Tab 5: Mass SOS & Mock Centers ---
+    with tab5:
+        st.header("🆘 Mass SOS Alert & Mock Center Directions")
+
+        users_path = os.path.join(os.path.dirname(__file__), "users.json")
+        try:
+            with open(users_path, "r", encoding="utf-8") as f:
+                users = json.load(f)
+        except Exception as e:
+            st.error(f"Could not load users.json: {e}")
+            users = []
+        # Get mock centers from session state
+        safe_centers_gdf = st.session_state.simulation_data.get('safe_centers_gdf')
+        if safe_centers_gdf is None or safe_centers_gdf.empty:
+            st.warning("⚠️ No mock/safe centers found. Please run the flood simulation and evacuation planning first.")
+        else:
+            # Prepare mock center info with Google Maps links
+            mock_centers_info = []
+            for idx, row in safe_centers_gdf.iterrows():
+                lat, lon = row.geometry.y, row.geometry.x
+                gmaps_link = f"https://www.google.com/maps/search/?api=1&query={lat},{lon}"
+                mock_centers_info.append({
+                    "name": row.get('center_id', f'Center {idx+1}'),
+                    "type": row.get('type', 'emergency'),
+                    "lat": lat,
+                    "lon": lon,
+                    "gmaps_link": gmaps_link
+                })
+
+            st.write("### 🏥 Mock/Emergency Centers to be sent:")
+            for c in mock_centers_info:
+                st.markdown(f"- **{c['name']}** ({c['type']}) [Google Maps]({c['gmaps_link']})")
+
+            # Compose the message
+          
+            subject = "🚨 FLOOD SOS: Emergency Centers & Directions"
+            html_centers = "".join([
+                f"<li><b>{c['name']}</b> ({c['type']}) - <a href='{c['gmaps_link']}'>Directions</a> ({c['lat']:.5f}, {c['lon']:.5f})</li>"
+                for c in mock_centers_info
+            ])
+
+            html_message = f"""
+            <ul>
+                {html_centers}
+            </ul>
+            </div>
+            </body>
+            </html>
+            """
+
+            if st.button("🚨 SEND MASS SOS TO ALL USERS", type="primary"):
+                from emergency_notifications import notification_system
+                sent_count = 0
+                failed_count = 0
+                
+                print("Users data:", users)
+                
+                # Extract emails from users dictionary
+                user_emails = []
+                for username, user_data in users.items():
+                    if isinstance(user_data, dict) and 'email' in user_data:
+                        email = user_data['email']
+                        if email:  # Check if email is not empty
+                            user_emails.append({
+                                'email': email,
+                                'name': user_data.get('name', username),
+                                'username': username
+                            })
+                            print(f"Found email for {username}: {email}")
+                
+                print(f"Total emails found: {len(user_emails)}")
+                
+                if not user_emails:
+                    st.warning("⚠️ No user emails found in the system!")
+                else:
+                    # Show progress
+                    progress_bar = st.progress(0)
+                    status_text = st.empty()
+                    
+                    # Send emails to all users
+                    for i, user_info in enumerate(user_emails):
+                        email = user_info['email']
+                        name = user_info['name']
+                        username = user_info['username']
+                        user_sub, user_message = get_flood_alert_email(name, selected_state)
+                        try:
+                            status_text.text(f"Sending to {name} ({email})...")
+                            print(email,user_sub, user_message)
+                            # Send the email
+                            notification_system.send_email_alert(
+                                email, 
+                                user_sub, 
+                                user_message+html_message, 
+                                is_html=True
+                            )
+                            sent_count += 1
+                            st.success(f"✅ Sent to {name} ({email})")
+                            
+                        except Exception as e:
+                            failed_count += 1
+                            st.error(f"❌ Failed to send to {name} ({email}): {str(e)}")
+                            print(f"Error sending to {email}: {e}")
+                        
+                        # Update progress
+                        progress_bar.progress((i + 1) / len(user_emails))
+                    
+                    # Final status
+                    status_text.text("Mass notification complete!")
+                    
+                    if sent_count > 0:
+                        st.success(f"✅ Successfully sent SOS alerts to {sent_count} users!")
+                    
+                    if failed_count > 0:
+                        st.warning(f"⚠️ Failed to send to {failed_count} users. Check logs for details.")
+                    
+                    # Summary
+                    st.info(f"📊 Summary: {sent_count} successful, {failed_count} failed out of {len(user_emails)} total emails")
+
 
     # Add authority-specific footer
     show_authority_footer()
@@ -728,11 +974,9 @@ def show_authority_interface():
         1. 🗺️ Load your area network
         2. 🌊 Check flood simulation
         3. 🚶 Find evacuation route
+                    
         
-        **In Emergency:**
-        - 📞 Call 112 immediately
-        - 🏃 Follow evacuation route
-        - 📻 Listen to official updates
+ 
         """)
         
         st.markdown("### ⚠️ Safety Status")
@@ -749,163 +993,6 @@ def show_authority_interface():
             color = "green" if status else "red"
             st.markdown(f"<span style='color: {color};'>{icon} {item_name}</span>", unsafe_allow_html=True)
 
-def find_best_evacuation_route(user_lat, user_lon, walking_speed):
-    """Find the best evacuation route by comparing all algorithms"""
-    
-    with st.spinner("🔍 Finding your best evacuation route..."):
-        try:
-            # Get simulation data
-            G = st.session_state.simulation_data['G']
-            impact = st.session_state.simulation_data['current_impact']
-            edges = st.session_state.simulation_data['edges']
-            
-            # Get safe centers (should already be prepared)
-            safe_centers_gdf = st.session_state.simulation_data.get('safe_centers_gdf')
-            
-            if safe_centers_gdf is None or safe_centers_gdf.empty:
-                # Prepare safe centers first
-                hospitals_gdf = st.session_state.simulation_data.get('hospitals_gdf')
-                police_gdf = st.session_state.simulation_data.get('police_gdf')
-                
-                # Prepare safe centers (exclude flooded ones)
-                safe_centers_gdf = prepare_safe_centers(hospitals_gdf, police_gdf, edges, impact['flood_poly'])
-                
-                # If no safe centers found, generate mock centers
-                if safe_centers_gdf.empty:
-                    st.warning("⚠️ No hospitals or police stations found outside flood zone. Generating emergency centers...")
-                    safe_centers_gdf = generate_mock_centers(edges, impact['flood_poly'])
-                
-                if safe_centers_gdf.empty:
-                    st.error("❌ Could not find any safe evacuation centers")
-                    return
-                
-                st.session_state.simulation_data['safe_centers_gdf'] = safe_centers_gdf
-            
-            st.success(f"✅ Found {len(safe_centers_gdf)} safe evacuation centers")
-            
-            # Check if user is in flood zone
-            user_point = Point(user_lon, user_lat)
-            in_flood_zone = False
-            if impact['flood_poly'] and impact['flood_poly'].contains(user_point):
-                in_flood_zone = True
-            
-            if not in_flood_zone:
-                st.success("✅ **You are in a SAFE ZONE!**")
-                st.info("No evacuation needed, but here are the nearest safe centers:")
-                
-                # Show nearest centers
-                for idx, center in safe_centers_gdf.head(3).iterrows():
-                    center_type = center.get('type', 'unknown')
-                    center_name = center.get('center_id', f'Center {idx+1}')
-                    icon = "🏥" if center_type == "hospital" else "🚓" if center_type == "police" else "🏠"
-                    
-                    # Calculate distance
-                    distance = user_point.distance(center.geometry) * 111000  # Rough conversion to meters
-                    st.write(f"{icon} **{center_name}** ({center_type.title()}) - ~{distance:.0f}m away")
-                
-                # Store result for map display
-                st.session_state.simulation_data['evacuation_result'] = {
-                    'status': 'safe',
-                    'user_location': user_point,
-                    'safe_centers_gdf': safe_centers_gdf
-                }
-                return
-            
-            st.error("🚨 **You are in a FLOOD ZONE!** Finding evacuation route...")
-            
-            # Create a person at user's location
-            user_gdf = gpd.GeoDataFrame({
-                'person_id': ['YOU'],
-                'geometry': [user_point]
-            }, crs=edges.crs)
-            
-            # Run all algorithms to find the fastest route
-            algorithms = {
-                "Dijkstra": dijkstra_evacuation,
-                "A*": astar_evacuation,
-                "Quanta Adaptive Routing": quanta_adaptive_routing_evacuation,
-                "Bidirectional": bidirectional_evacuation
-            }
-            
-            algorithm_results = {}
-            best_algorithm = None
-            best_time = float('inf')
-            
-            st.write("### 🔄 Testing All Algorithms...")
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            
-            for i, (alg_name, alg_func) in enumerate(algorithms.items()):
-                status_text.text(f"Testing {alg_name}...")
-                progress_bar.progress((i + 1) / len(algorithms))
-                
-                try:
-                    result = alg_func(G, user_gdf, safe_centers_gdf, walking_speed)
-                    algorithm_results[alg_name] = result
-                    
-                    # Check if this algorithm found a faster route
-                    if result['times'] and len(result['times']) > 0:
-                        avg_time = np.mean(result['times'])
-                        if avg_time < best_time:
-                            best_time = avg_time
-                            best_algorithm = alg_name
-                    
-                except Exception as e:
-                    st.warning(f"⚠️ {alg_name} failed: {e}")
-                    algorithm_results[alg_name] = {'error': str(e)}
-            
-            progress_bar.empty()
-            status_text.empty()
-            
-            # Store results
-            st.session_state.simulation_data['evacuation_result'] = {
-                'algorithm_results': algorithm_results,
-                'best_algorithm': best_algorithm,
-                'best_time': best_time,
-                'safe_centers_gdf': safe_centers_gdf,
-                'user_location': user_point,
-                'walking_speed': walking_speed,
-                'routes': algorithm_results.get(best_algorithm, {}).get('routes', []) if best_algorithm else []
-            }
-            
-            # Show results summary
-            if best_algorithm:
-                st.success(f"✅ **Best Route Found:** {best_algorithm} algorithm")
-                st.write(f"⏱️ **Estimated Time:** {best_time:.1f} minutes")
-                
-                # Show algorithm comparison
-                st.write("### 🏆 Algorithm Performance")
-                for alg_name, result in algorithm_results.items():
-                    if 'error' not in result and result.get('times'):
-                        time_taken = np.mean(result['times'])
-                        if alg_name == best_algorithm:
-                            st.success(f"🏆 **{alg_name}**: {time_taken:.1f} min (FASTEST)")
-                        else:
-                            st.info(f"⏱️ **{alg_name}**: {time_taken:.1f} min")
-                    elif 'error' in result:
-                        st.error(f"❌ **{alg_name}**: Failed")
-            else:
-                st.error("❌ No evacuation routes found. All routes may be blocked.")
-# After finding the best route, add SOS alert functionality
-            if best_algorithm:
-                st.success(f"✅ **Best Route Found:** {best_algorithm} algorithm")
-                st.write(f"⏱️ **Estimated Time:** {best_time:.1f} minutes")
-                
-                # ADD THIS NEW SECTION FOR SOS ALERTS
-                st.markdown("---")
-                st.subheader("🚨 Emergency Notifications")
-                
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    if st.button("🆘 SEND SOS ALERT", type="primary", use_container_width=True):
-                        send_emergency_sos_alert(user_lat, user_lon, best_algorithm, best_time)
-                
-                with col2:
-                    if st.button("📧 EMAIL EVACUATION PLAN", use_container_width=True):
-                        send_evacuation_plan_email(user_lat, user_lon, best_algorithm, best_time)        
-        except Exception as e:
-            st.error(f"❌ Error finding evacuation route: {e}")
 
 def generate_mock_centers(edges, flood_poly):
     """Generate mock evacuation centers outside flood zones"""
@@ -946,151 +1033,17 @@ def generate_mock_centers(edges, flood_poly):
         st.error(f"Error generating mock centers: {e}")
         return gpd.GeoDataFrame(columns=['name', 'geometry', 'type', 'center_id'], crs=edges.crs)
 
-def show_evacuation_results_below_map():
-    """Display the evacuation results below the main map"""
-    
-    evac_result = st.session_state.simulation_data['evacuation_result']
-    
-    # Handle safe zone case
-    if evac_result.get('status') == 'safe':
-        st.success("✅ You are in a safe zone!")
-        return
-    
-    best_algorithm = evac_result.get('best_algorithm')
-    
-    if not best_algorithm:
-        st.error("❌ No evacuation routes available")
-        return
-    
-    best_result = evac_result['algorithm_results'][best_algorithm]
-    
-    # Show best route details
-    if best_result.get('routes'):
-        route = best_result['routes'][0]  # First (and likely only) route
-        destination = route.get('destination', 'Safe Center')
-        time_taken = route.get('time', evac_result.get('best_time', 0))
-        
-        st.markdown("""
-        <div style='background: #28a745; color: white; padding: 1rem; border-radius: 8px; margin: 1rem 0;'>
-            <h3>✅ EVACUATION ROUTE DISPLAYED ON MAP</h3>
-            <p><strong>Follow the green route shown above to reach safety</strong></p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Use sequential layout instead of columns to avoid nesting
-        st.metric("🏆 Best Algorithm", best_algorithm)
-        st.metric("⏱️ Evacuation Time", f"{time_taken:.0f} min")
-        st.metric("🏥 Destination", destination)
-        
-        # Step-by-step instructions
-        st.subheader("📋 Your Evacuation Instructions")
-        
-        with st.expander(f"🚶 Route to {destination} ({time_taken:.0f} min)", expanded=True):
-            st.write(f"**🏥 Destination:** {destination}")
-            st.write(f"**⏱️ Estimated Time:** {time_taken:.0f} minutes")
-            st.write(f"**🚶 Walking Speed:** {evac_result['walking_speed']} km/h")
-            
-            st.write("**📍 Directions:**")
-            st.write("1. 🚶 Follow the GREEN route on the map above")
-            st.write("2. 🏥 Head towards the FLAG marker (destination)")
-            st.write("3. 📱 Keep this map open for navigation")
-            st.write("4. ⚠️ Stay alert and follow emergency instructions")
-            st.write("5. 📞 Call 112 if you encounter any problems")
-        
-        # Emergency contacts
-        st.subheader("📞 Emergency Contacts")
-        
-        st.markdown("""
-        **🚨 Emergency Services**
-        - Emergency: **112**
-        - Police: **100**
-        - Fire: **101**
-        - Medical: **108**
-        
-        **📻 Stay Informed**
-        - Local radio stations
-        - Emergency broadcasts
-        - Official government alerts
-        - Social media updates
-        """)
-def test_notification_system():
-    """Test the complete notification system"""
-    st.write("### 🧪 Test Notification System")
-    
-    # ADD THIS NEW GMAIL TEST BUTTON
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        if st.button("📧 Test Gmail Connection"):
-            try:
-                from emergency_notifications import test_gmail_connection
-                if test_gmail_connection():
-                    st.success("✅ Gmail connection successful!")
-                else:
-                    st.error("❌ Gmail connection failed!")
-            except Exception as e:
-                st.error(f"❌ Gmail test failed: {e}")
-    
-    with col2:
-        if st.button("🔍 Debug User Data"):
-            try:
-                from emergency_notifications import debug_user_data_session
-                debug_user_data_session()
-            except Exception as e:
-                st.error(f"❌ Debug failed: {e}")
-    
-    if st.button("🧪 Test Email & SMS"):
-        # Get user data from session state
-        user_data = {
-            'name': st.session_state.get('user_name', 'Test User'),
-            'email': st.session_state.get('user_email', ''),
-            'phone': st.session_state.get('user_phone', '')
-        }
-        
-        st.write("**User Data Retrieved:**")
-        st.json(user_data)
-        
-        if user_data['email'] and user_data['phone']:
-            st.success("✅ Email and phone found - notifications should work!")
-            
-            # Test data
-            evacuation_data = {
-                'best_algorithm': 'Test Algorithm',
-                'best_time': 15.5,
-                'destination': 'Test Safe Center'
-            }
-            
-            location_data = {
-                'lat': 19.0760,
-                'lon': 72.8777
-            }
-            
-            if st.button("📧 Send Test Alert"):
-                try:
-                    from emergency_notifications import send_sos_alert
-                    results = send_sos_alert(user_data, evacuation_data, location_data)
-                    st.write("**Test Results:**")
-                    st.json(results)
-                except Exception as e:
-                    st.error(f"Test failed: {e}")
-        else:
-            st.error("❌ Missing email or phone - update your profile first!")
+
 def show_authority_footer():
     st.markdown("---")
     st.markdown("""
     <div style='text-align: center; padding: 20px; background-color: #dc3545; color: white; border-radius: 10px; margin-top: 20px;'>
         <h4>🚨 EMERGENCY EVACUATION SYSTEM</h4>
         <p><strong>⚠️ FOR EMERGENCY USE ONLY</strong></p>
-        <p>This system provides evacuation guidance during flood emergencies. 
-        Always follow official emergency services instructions and evacuation orders.</p>
-        <div style='margin-top: 15px; font-size: 18px;'>
-            <strong>🆘 EMERGENCY NUMBERS:</strong><br>
-            <span style='background: white; color: red; padding: 5px 10px; border-radius: 5px; margin: 5px;'>📞 112 - Emergency</span>
-            <span style='background: white; color: red; padding: 5px 10px; border-radius: 5px; margin: 5px;'>🚓 100 - Police</span>
-            <span style='background: white; color: red; padding: 5px 10px; border-radius: 5px; margin: 5px;'>🚑 108 - Medical</span>
-        </div>
+        <p>DISASTER RESPONSE AUTHORITY (FLOODS)</p>
+        <p>© 2025 All Rights Reserved</p>
     </div>
     """, unsafe_allow_html=True)
 
 # Make sure this is properly exported
-__all__ = ['show_authority_interface', 'find_best_evacuation_route', 'generate_mock_centers', 'show_evacuation_results_below_map', 'show_authority_footer', 'sync_coordinates']
+__all__ = ['show_authority_interface',  'generate_mock_centers',  'show_authority_footer']

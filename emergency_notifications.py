@@ -15,6 +15,8 @@ from typing import List, Dict, Optional
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+
 class EmergencyNotificationSystem:
     def __init__(self):
         """Initialize the notification system with environment variables"""
@@ -446,6 +448,119 @@ def debug_user_data_session():
             st.error(f"❌ {key} is missing!")
         else:
             st.success(f"✅ {key}: {value}")
+
+
+# Updated Email message for user (bilingual with state-specific languages)
+def get_flood_alert_email(user_name, state):
+    
+    STATE_LANGUAGE_MAP = {
+        "Maharashtra": {
+            "lang": "Marathi",
+            "sms": "🚨 पूर इशारा FLOOD ALERT 🚨\n{name}, आपण पूर क्षेत्रात आहात!\nRoute: {algorithm}\nTime: {evacuation_time} min\nकृपया त्वरित स्थलांतर करा!\nEmergency: 112, 100, 108",
+            "email_subject": "🚨 तातडीची सूचना: पूर स्थलांतर आवश्यक - Flood Evacuation Required",
+            "email_greeting": "प्रिय {name},\n\nआपण सध्या पूर क्षेत्रात आहात. कृपया त्वरित स्थलांतर करा!\n\nDear {name},\nYou are currently in a flood zone and must evacuate immediately!"
+        },
+        "Karnataka": {
+            "lang": "Kannada",
+            "sms": "🚨 ನೆರೆ ಎಚ್ಚರಿಕೆ FLOOD ALERT 🚨\n{name}, ನೀವು ನೆರೆ ಪ್ರದೇಶದಲ್ಲಿದ್ದೀರಿ!\nRoute: {algorithm}\nTime: {evacuation_time} min\nದಯವಿಟ್ಟು ತಕ್ಷಣ ಸ್ಥಳಾಂತರಗೊಳ್ಳಿ!\nEmergency: 112, 100, 108",
+            "email_subject": "🚨 ತುರ್ತು ಸೂಚನೆ: ನೆರೆ ಸ್ಥಳಾಂತರ ಅಗತ್ಯವಿದೆ - Flood Evacuation Required",
+            "email_greeting": "ಪ್ರಿಯ {name},\n\nನೀವು ಈಗ ನೆರೆ ಪ್ರದೇಶದಲ್ಲಿದ್ದೀರಿ. ದಯವಿಟ್ಟು ತಕ್ಷಣ ಸ್ಥಳಾಂತರಗೊಳ್ಳಿ!\n\nDear {name},\nYou are currently in a flood zone and must evacuate immediately!"
+        }
+    }
+    
+    # Get language-specific content
+    lang_config = STATE_LANGUAGE_MAP.get(state, STATE_LANGUAGE_MAP["Karnataka"])  # Default to Karnataka if state not found
+    
+    user_email_subject = lang_config["email_subject"]
+    
+    # Language-specific content based on state
+    if state == "Maharashtra":
+        # Marathi content
+        header_local = "🚨 आपत्कालीन पूर स्थलांतर इशारा"
+        emergency_instructions_header = "🆘 आपत्कालीन सूचना / Emergency Instructions:"
+        emergency_contacts_header = "📞 आपत्कालीन संपर्क / Emergency Contacts:"
+        
+        emergency_services = [
+            ("आपत्कालीन सेवा / Emergency Services", "112"),
+            ("पोलिस / Police", "100"),
+            ("वैद्यकीय आपत्काल / Medical Emergency", "108"),
+            ("अग्निशमन विभाग / Fire Department", "101"),
+            ("आपत्ती व्यवस्थापन / Disaster Management", "1078")
+        ]
+        
+        instructions = [
+            
+            "अॅपमध्ये दाखवलेल्या स्थलांतर मार्गाचे तत्काळ पालन करा / Follow the evacuation route shown in the app immediately",
+            "फक्त आवश्यक वस्तू घ्या / Take essential items only (documents, medications, water)",
+            "शांत राहा आणि जलद पण सुरक्षितपणे पुढे जा / Stay calm and move quickly but safely",
+            "समस्या असल्यास 112 वर कॉल करा / Call 112 if you encounter any problems",
+            "अधिकार्‍यांनी सुरक्षित घोषित करेपर्यंत परत येऊ नका / Do not return until authorities declare it safe"
+        ]
+
+        
+        warning_text = "⚠️ ही एक स्वयंचलित आपत्कालीन इशारा आहे. कृपया तत्काळ स्थलांतर करा."
+        safe_centers = "खालील सुरक्षित केंद्रांपैकी कोणत्याहीकडे स्थलांतर करा / Evacuate to any of these safe centers:"
+    else:  # Karnataka (Kannada)
+        # Kannada content
+        header_local = "🚨 ತುರ್ತು ನೆರೆ ಸ್ಥಳಾಂತರ ಎಚ್ಚರಿಕೆ"
+        emergency_instructions_header = "🆘 ತುರ್ತು ಸೂಚನೆಗಳು / Emergency Instructions:"
+        emergency_contacts_header = "📞 ತುರ್ತು ಸಂಪರ್ಕಗಳು / Emergency Contacts:"
+        
+        emergency_services = [
+            ("ತುರ್ತು ಸೇವೆಗಳು / Emergency Services", "112"),
+            ("ಪೊಲೀಸ್ / Police", "100"),
+            ("ವೈದ್ಯಕೀಯ ತುರ್ತು / Medical Emergency", "108"),
+            ("ಅಗ್ನಿಶಾಮಕ ವಿಭಾಗ / Fire Department", "101"),
+            ("ವಿಪತ್ತು ನಿರ್ವಹಣೆ / Disaster Management", "1078")
+        ]
+        
+        instructions = [
+            
+            "ಅಪ್ಲಿಕೇಶನ್‌ನಲ್ಲಿ ತೋರಿಸಿದ ಸ್ಥಳಾಂತರ ಮಾರ್ಗವನ್ನು ತಕ್ಷಣ ಅನುಸರಿಸಿ / Follow the evacuation route shown in the app immediately",
+            "ಅಗತ್ಯ ವಸ್ತುಗಳನ್ನು ಮಾತ್ರ ತೆಗೆದುಕೊಳ್ಳಿ / Take essential items only (documents, medications, water)",
+            "ಶಾಂತವಾಗಿರಿ ಮತ್ತು ವೇಗವಾಗಿ ಆದರೆ ಸುರಕ್ಷಿತವಾಗಿ ಚಲಿಸಿ / Stay calm and move quickly but safely",
+            "ಸಮಸ್ಯೆ ಎದುರಾದರೆ 112 ಗೆ ಕರೆ ಮಾಡಿ / Call 112 if you encounter any problems",
+            "ಅಧಿಕಾರಿಗಳು ಸುರಕ್ಷಿತ ಎಂದು ಘೋಷಿಸುವವರೆಗೆ ಹಿಂತಿರುಗಬೇಡಿ / Do not return until authorities declare it safe"
+        ]
+
+        
+        warning_text = "⚠️ ಇದು ಸ್ವಯಂಚಾಲಿತ ತುರ್ತು ಎಚ್ಚರಿಕೆಯಾಗಿದೆ. ದಯವಿಟ್ಟು ತಕ್ಷಣ ಸ್ಥಳಾಂತರಗೊಳ್ಳಿ."
+        safe_centers = "ಈ ಸುರಕ್ಷಿತ ಕೇಂದ್ರಗಳಲ್ಲಿ ಯಾವುದಕ್ಕೂ ಸ್ಥಳಾಂತರಗೊಳ್ಳಿ / Evacuate to any of these safe centers:"
+    user_email_message = f"""
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6;">
+    <div style="background-color: #dc3545; color: white; padding: 20px; text-align: center;">
+        <h1>{header_local}</h1>
+        <h1>🚨 EMERGENCY FLOOD EVACUATION ALERT</h1>
+    </div>
+    
+    <div style="padding: 20px;">
+        <div style="background-color: #f8f9fa; padding: 15px; margin-bottom: 20px; border-left: 4px solid #dc3545;">
+            {lang_config["email_greeting"].format(name=user_name)}
+        </div>
+        
+        
+        <h3>{emergency_instructions_header}</h3>
+        <ol>
+            {"".join(f"<li>{instruction}</li>" for instruction in instructions)}
+        </ol>
+        
+        <h3>{emergency_contacts_header}</h3>
+        <ul>
+            {"".join(f"<li><strong>{service}:</strong> {number}</li>" for service, number in emergency_services)}
+        </ul>
+        
+        <div style="background-color: #fff3cd; padding: 15px; margin: 20px 0; border-left: 4px solid #ffc107;">
+            <strong>{warning_text}</strong><br>
+            <strong>⚠️ This is an automated emergency alert. Please evacuate immediately.</strong>
+        </div>
+        <h1>{safe_centers}</h1>
+
+    
+    """
+    
+    return user_email_subject, user_email_message
+
 
 # Test the connection when this module is imported (optional)
 if __name__ == "__main__":
