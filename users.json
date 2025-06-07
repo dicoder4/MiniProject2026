@@ -40,5 +40,37 @@
     "email": "anisha.ajit303@gmail.com",
     "phone": "+916361473471",
     "created": "2025-06-07T19:31:54.855537"
+  },
+  "Modi": {
+    "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+    "role": "authority",
+    "name": "mode",
+    "email": "xaditrix@gmail.com",
+    "phone": "+917338199014",
+    "created": "2025-06-07T21:10:35.738992"
+  },
+  "Rahul": {
+    "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+    "role": "authority",
+    "name": "rara",
+    "email": "aditrixd@gmail.com",
+    "phone": "+917338199014",
+    "created": "2025-06-07T21:37:26.191396"
+  },
+  "Anisha Flood Evacuation Agency": {
+    "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+    "role": "authority",
+    "name": "Anisha Ajit",
+    "email": "anisha.ajit303@gmail.com",
+    "phone": "+916361473471",
+    "created": "2025-06-07T21:39:50.819076"
+  },
+  "Aditri": {
+    "password": "8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92",
+    "role": "researcher",
+    "name": "Aditri B Ray",
+    "email": "xaditrix@gmail.com",
+    "phone": "+917338199014",
+    "created": "2025-06-07T21:40:28.086478"
   }
 }

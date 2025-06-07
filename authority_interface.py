@@ -1109,7 +1109,6 @@ def show_authority_footer():
     """, unsafe_allow_html=True)
 
 # Make sure this is properly exported
-<<<<<<< HEAD:citizen_interface.py
 __all__ = ['show_citizen_interface', 'find_best_evacuation_route', 'generate_mock_centers', 'show_evacuation_results_below_map', 'show_citizen_footer', 'sync_coordinates']
 
 def show_citizen_footer():
@@ -1126,46 +1125,4 @@ def show_citizen_footer():
     </div>
     """, unsafe_allow_html=True)
 
-def test_notification_system():
-    """Test the complete notification system"""
-    st.write("### 🧪 Test Notification System")
-    
-    if st.button("🧪 Test Email & SMS"):
-        # Get user data from session state
-        user_data = {
-            'name': st.session_state.get('user_name', 'Test User'),
-            'email': st.session_state.get('user_email', ''),
-            'phone': st.session_state.get('user_phone', '')
-        }
-        
-        st.write("**User Data Retrieved:**")
-        st.json(user_data)
-        
-        if user_data['email'] and user_data['phone']:
-            st.success("✅ Email and phone found - notifications should work!")
-            
-            # Test data
-            evacuation_data = {
-                'best_algorithm': 'Test Algorithm',
-                'best_time': 15.5,
-                'destination': 'Test Safe Center'
-            }
-            
-            location_data = {
-                'lat': 19.0760,
-                'lon': 72.8777
-            }
-            
-            if st.button("📧 Send Test Alert"):
-                try:
-                    from emergency_notifications import send_sos_alert
-                    results = send_sos_alert(user_data, evacuation_data, location_data)
-                    st.write("**Test Results:**")
-                    st.json(results)
-                except Exception as e:
-                    st.error(f"Test failed: {e}")
-        else:
-            st.error("❌ Missing email or phone - update your profile first!")
-=======
 __all__ = ['show_authority_interface', 'find_best_evacuation_route', 'generate_mock_centers', 'show_evacuation_results_below_map', 'show_authority_footer', 'sync_coordinates']
->>>>>>> 57db88595fd20bcbe7029c242177c7135cce7197:authority_interface.py

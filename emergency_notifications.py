@@ -23,130 +23,248 @@ class EmergencyNotificationSystem:
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 587
         
-        # SMS Gateway mappings for Indian carriers
-        self.sms_gateways = {
-            # Airtel India
-            'airtel': '@airtelmail.com',
-            'airtel_ap': '@airtelap.com',
-            'airtel_goa': '@airtelmail.com',
-            'airtel_gujarat': '@airtelmail.com',
-            'airtel_haryana': '@airtelmail.com',
-            'airtel_himachal': '@airtelmail.com',
-            'airtel_karnataka': '@airtelkk.com',
-            'airtel_kerala': '@airtelkerala.com',
-            'airtel_kolkata': '@airtelkol.com',
-            'airtel_mp': '@airtelmail.com',
-            'airtel_maharashtra': '@airtelmail.com',
-            
-            # Idea Cellular India
-            'idea': '@ideacellular.net',
-            'idea_ap': '@ideacellular.net',
-            'idea_goa': '@ideacellular.net',
-            'idea_gujarat': '@ideacellular.net',
-            'idea_maharashtra': '@ideacellular.net',
-            
-            # Vodafone India
-            'vodafone': '@vodafonemail.com',
-            'vodafone_mumbai': '@vfmail.com',
-            
-            # Jio (Reliance)
-            'jio': '@jiomsg.com',
-            'reliance': '@rcom.co.in',
-            
-            # BSNL
-            'bsnl': '@bsnlmail.com',
-            
-            # Other Indian carriers
-            'tata_docomo': '@tatadocomo.com',
-            'uninor': '@uninor.in',
-            'mts': '@mtnl.net',
-            'cellone': '@cellonemail.com',
-            'spice': '@spicemobile.com',
-            
-            # Fallback options
-            'default': '@airtelmail.com'  # Most widely used
-        }
-    
-    def detect_indian_carrier(self, phone_number: str) -> str:
-        """Detect Indian carrier based on phone number patterns"""
-        # Remove all non-digits
-        clean_phone = ''.join(filter(str.isdigit, phone_number))
-        
-        # Remove country code if present
-        if len(clean_phone) == 12 and clean_phone.startswith('91'):
-            clean_phone = clean_phone[2:]
-        elif len(clean_phone) == 13 and clean_phone.startswith('091'):
-            clean_phone = clean_phone[3:]
-        
-        if len(clean_phone) != 10:
-            return 'airtel'  # Default fallback
-        
-        # Basic carrier detection based on number series
-        # Note: These are approximate patterns and may not be 100% accurate
-        first_digits = clean_phone[:4]
-        
-        # Airtel patterns (approximate)
-        airtel_patterns = ['9876', '9877', '9878', '9879', '8447', '8448', '8449']
-        if any(clean_phone.startswith(pattern[:3]) for pattern in airtel_patterns):
-            return 'airtel'
-        
-        # Jio patterns (approximate)
-        jio_patterns = ['8901', '8902', '8903', '8904', '8905', '6299', '7299', '7338']
-        if any(clean_phone.startswith(pattern[:3]) for pattern in jio_patterns):
-            return 'jio'
-        
-        # Vodafone patterns (approximate)
-        vodafone_patterns = ['9825', '9826', '9827', '9828', '9829']
-        if any(clean_phone.startswith(pattern[:3]) for pattern in vodafone_patterns):
-            return 'vodafone'
-        
-        # Default to Airtel (most common)
-        return 'airtel'
-    
-    def send_sms_via_email(self, phone_number: str, message: str, carrier: str = None) -> bool:
-        """Send SMS via email-to-SMS gateway for Indian carriers"""
+    def send_email_alert(self, recipient_email: str, subject: str, message: str, is_html: bool = False) -> bool:
+        """Send email alert"""
         try:
-            # Clean phone number
-            clean_phone = ''.join(filter(str.isdigit, phone_number))
-            
-            # Remove country code if present
-            if len(clean_phone) == 12 and clean_phone.startswith('91'):
-                clean_phone = clean_phone[2:]
-            elif len(clean_phone) == 13 and clean_phone.startswith('091'):
-                clean_phone = clean_phone[3:]
-            
-            if len(clean_phone) != 10:
-                logger.error(f"Invalid Indian phone number format: {phone_number}")
-                return False
-            
-            # Detect carrier if not provided
-            if not carrier:
-                carrier = self.detect_indian_carrier(phone_number)
-            
-            # Get SMS gateway
-            gateway = self.sms_gateways.get(carrier.lower(), '@airtelmail.com')
-            sms_email = clean_phone + gateway
-            
-            # Create SMS message (keep it short for SMS)
-            sms_message = message[:160]  # SMS limit
-            
-            msg = MIMEText(sms_message)
+            msg = MIMEMultipart('alternative')
             msg['From'] = self.alert_email
-            msg['To'] = sms_email
-            msg['Subject'] = "FLOOD ALERT"
+            msg['To'] = recipient_email
+            msg['Subject'] = subject
             
-            # Send via SMTP
+            if is_html:
+                msg.attach(MIMEText(message, 'html'))
+            else:
+                msg.attach(MIMEText(message, 'plain'))
+            
             with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
                 server.starttls()
                 server.login(self.alert_email, self.alert_password)
                 server.send_message(msg)
             
-            logger.info(f"SMS sent successfully to {phone_number} via {sms_email}")
+            logger.info(f"Email sent successfully to {recipient_email}")
             return True
             
         except Exception as e:
+            logger.error(f"Failed to send email to {recipient_email}: {e}")
+            return False
+    
+    def send_sms_via_email(self, phone_number: str, message: str) -> bool:
+        """Send SMS via email-to-SMS gateway"""
+        try:
+            # Indian SMS gateways
+            carriers = {
+                "airtel": "@airtelap.com",
+                "jio": "@jionet.co.in", 
+                "vi": "@vtext.com",
+                "bsnl": "@bsnlnet.in"
+            }
+            
+            # Try multiple carriers
+            for carrier, gateway in carriers.items():
+                sms_email = phone_number.replace("+91", "") + gateway
+                success = self.send_email_alert(sms_email, "Flood Alert", message)
+                if success:
+                    return True
+            
+            return False
+        except Exception as e:
             logger.error(f"Failed to send SMS to {phone_number}: {e}")
             return False
+
+# MOVE THESE FUNCTIONS OUTSIDE THE CLASS - AT MODULE LEVEL
+
+def get_all_authorities():
+    """Get all users with authority role from users.json"""
+    try:
+        import json
+        import os
+        
+        users_file = "users.json"
+        if not os.path.exists(users_file):
+            return []
+        
+        with open(users_file, 'r') as f:
+            users = json.load(f)
+        
+        authorities = []
+        for username, user_data in users.items():
+            if user_data.get('role') == 'authority':
+                authorities.append({
+                    'username': username,
+                    'name': user_data.get('name', 'Unknown'),
+                    'email': user_data.get('email', ''),
+                    'phone': user_data.get('phone', '')
+                })
+        
+        return authorities
+    except Exception as e:
+        logger.error(f"Failed to load authorities: {e}")
+        return []
+
+def send_evacuation_plan_to_authorities(researcher_data: Dict, evacuation_data: Dict, location_data: Dict, map_image_base64: str = None) -> Dict:
+    """Send evacuation plan to all registered authorities with map"""
+    results = {
+        'authorities_notified': [],
+        'failed_notifications': [],
+        'total_sent': 0,
+        'timestamp': datetime.now().isoformat()
+    }
+    
+    try:
+        # Get all authorities
+        authorities = get_all_authorities()
+        
+        if not authorities:
+            logger.warning("No authorities found in system")
+            return results
+        
+        # Extract data
+        researcher_name = researcher_data.get('name', 'Unknown Researcher')
+        researcher_email = researcher_data.get('email', '')
+        location_name = location_data.get('location_name', 'Unknown Location')
+        station_name = location_data.get('station_name', 'Unknown Station')
+        lat = location_data.get('lat', 0)
+        lon = location_data.get('lon', 0)
+        
+        algorithm = evacuation_data.get('algorithm', 'Unknown')
+        evacuation_time = evacuation_data.get('evacuation_time', 0)
+        evacuated_count = evacuation_data.get('evacuated_count', 0)
+        total_at_risk = evacuation_data.get('total_at_risk', 0)
+        success_rate = (evacuated_count / total_at_risk * 100) if total_at_risk > 0 else 0
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
+        
+        # Create professional subject line
+        subject = f"🚨 OFFICIAL FLOOD EVACUATION PLAN - {station_name} | Research Report by {researcher_name}"
+        
+        # Create comprehensive evacuation report
+        email_message = f"""
+<html>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+    <div style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 25px; text-align: center; border-radius: 10px 10px 0 0;">
+        <h1 style="margin: 0; font-size: 24px;">🌊 OFFICIAL FLOOD EVACUATION PLAN</h1>
+        <h2 style="margin: 10px 0 0 0; font-size: 18px; font-weight: normal;">Emergency Response Research Report</h2>
+    </div>
+    
+    <div style="padding: 30px; background: #f8f9fa; border-radius: 0 0 10px 10px;">
+        <div style="background: white; padding: 25px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            
+            <h2 style="color: #1e3c72; border-bottom: 2px solid #1e3c72; padding-bottom: 10px;">📋 EXECUTIVE SUMMARY</h2>
+            
+            <div style="background: #e3f2fd; padding: 15px; border-left: 4px solid #2196f3; margin: 20px 0;">
+                <p><strong>Prepared by:</strong> {researcher_name} (Emergency Response Researcher)</p>
+                <p><strong>Research Institution:</strong> Flood Evacuation Planning System</p>
+                <p><strong>Report Date:</strong> {timestamp}</p>
+                <p><strong>Location:</strong> {location_name}</p>
+                <p><strong>Station:</strong> {station_name}</p>
+            </div>
+            
+            <h3 style="color: #d32f2f;">🎯 CRITICAL FINDINGS</h3>
+            <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <tr style="background: #f5f5f5;">
+                    <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold;">Optimal Algorithm</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{algorithm}</td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold;">Average Evacuation Time</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{evacuation_time:.1f} minutes</td>
+                </tr>
+                <tr style="background: #f5f5f5;">
+                    <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold;">Success Rate</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{success_rate:.1f}% ({evacuated_count}/{total_at_risk} people)</td>
+                </tr>
+                <tr>
+                    <td style="padding: 12px; border: 1px solid #ddd; font-weight: bold;">Coordinates</td>
+                    <td style="padding: 12px; border: 1px solid #ddd;">{lat:.6f}, {lon:.6f}</td>
+                </tr>
+            </table>
+            
+            <h3 style="color: #d32f2f;">🗺️ EVACUATION ROUTE MAP</h3>
+            <div style="text-align: center; margin: 20px 0;">
+                {"<img src='data:image/png;base64," + map_image_base64 + "' style='max-width: 100%; height: auto; border: 2px solid #ddd; border-radius: 8px;' alt='Evacuation Route Map'/>" if map_image_base64 else "<p style='color: #666; font-style: italic;'>Map visualization not available</p>"}
+            </div>
+            
+            <h3 style="color: #d32f2f;">📊 RECOMMENDED ACTIONS</h3>
+            <ol style="padding-left: 20px;">
+                <li><strong>Immediate Deployment:</strong> Implement the {algorithm} evacuation algorithm for optimal results</li>
+                <li><strong>Resource Allocation:</strong> Position emergency vehicles along identified evacuation routes</li>
+                <li><strong>Communication:</strong> Alert residents in the affected area using the provided coordinates</li>
+                <li><strong>Monitoring:</strong> Establish checkpoints at safe centers to track evacuation progress</li>
+                <li><strong>Coordination:</strong> Liaise with local emergency services for seamless execution</li>
+            </ol>
+            
+            <div style="background: #d4edda; padding: 20px; border-left: 4px solid #28a745; margin: 25px 0;">
+                <h4 style="margin-top: 0; color: #155724;">📧 RESEARCHER CONTACT INFORMATION</h4>
+                <p style="margin: 5px 0;"><strong>Lead Researcher:</strong> {researcher_name}</p>
+                <p style="margin: 5px 0;"><strong>Email:</strong> {researcher_email}</p>
+                <p style="margin: 5px 0;"><strong>Institution:</strong> Emergency Response Research Division</p>
+                <p style="margin: 5px 0;"><strong>Report ID:</strong> FERP-{timestamp.replace(' ', '').replace(':', '').replace('-', '')}</p>
+            </div>
+            
+            <div style="text-align: center; margin-top: 30px; padding-top: 20px; border-top: 2px solid #eee;">
+                <p style="font-size: 12px; color: #666; margin: 0;">
+                    <strong>CONFIDENTIAL GOVERNMENT COMMUNICATION</strong><br>
+                    This evacuation plan is generated using advanced AI algorithms and real-time flood simulation data.<br>
+                    For immediate assistance or clarification, contact the research team or emergency services.
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
+        """
+        
+        # Initialize notification system
+        notification_system = EmergencyNotificationSystem()
+        
+        # Send to all authorities
+        for authority in authorities:
+            if authority['email']:
+                try:
+                    success = notification_system.send_email_alert(
+                        authority['email'], 
+                        subject, 
+                        email_message, 
+                        is_html=True
+                    )
+                    
+                    if success:
+                        results['authorities_notified'].append({
+                            'name': authority['name'],
+                            'email': authority['email'],
+                            'username': authority['username']
+                        })
+                        results['total_sent'] += 1
+                    else:
+                        results['failed_notifications'].append({
+                            'name': authority['name'],
+                            'email': authority['email'],
+                            'error': 'Email send failed'
+                        })
+                        
+                except Exception as e:
+                    results['failed_notifications'].append({
+                        'name': authority['name'],
+                        'email': authority['email'],
+                        'error': str(e)
+                    })
+            else:
+                results['failed_notifications'].append({
+                    'name': authority['name'],
+                    'email': 'No email provided',
+                    'error': 'Missing email address'
+                })
+        
+        logger.info(f"Evacuation plan sent to {results['total_sent']} authorities")
+        return results
+        
+    except Exception as e:
+        logger.error(f"Failed to send evacuation plan to authorities: {e}")
+        results['failed_notifications'].append({'error': str(e)})
+        return results
+   
+
+    
     
     def send_email_alert(self, recipient_email: str, subject: str, message: str, is_html: bool = False) -> bool:
         """Send email alert"""
