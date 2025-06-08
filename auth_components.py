@@ -168,6 +168,7 @@ def show_login_page():
             new_name = st.text_input("Full Name", placeholder="Enter your full name")
             new_email = st.text_input("Email Address", placeholder="Enter your email address")
             new_phone = st.text_input("Phone Number", placeholder="Enter your phone number (e.g., +911234567890)")
+            new_address = st.text_input("Address", placeholder="Enter your address (e.g., 123 Main St, City, State)")
             new_password = st.text_input("Password", type="password", placeholder="Enter password")
             confirm_password = st.text_input("Confirm Password", type="password", placeholder="Confirm password")
             role_choice = st.selectbox("Account Type", ["authority", "researcher"], 
@@ -176,7 +177,7 @@ def show_login_page():
             register_button = st.form_submit_button("📝 Create Account", type="primary", use_container_width=True)
             
             if register_button:
-                if all([new_username, new_name, new_email, new_phone, new_password, confirm_password]):
+                if all([new_username, new_name, new_email, new_phone, new_address ,new_password, confirm_password]):
                     if new_password == confirm_password:
                         if len(new_password) >= 6:
                             if "@" in new_email and "." in new_email:
