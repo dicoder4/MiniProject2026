@@ -5,21 +5,22 @@ Handles login, user roles, and session management
 
 import streamlit as st
 import hashlib
-import json
 import os
 from datetime import datetime, timedelta
+from db_utils import get_users_collection, save_user
 
 class AuthManager:
     def __init__(self):
-        self.users_file = "users.json"
         self.session_timeout = 30  # minutes
         self.init_default_users()
     
     def init_default_users(self):
-        """Initialize default users if file doesn't exist"""
-        if not os.path.exists(self.users_file):
-            default_users = {
-                "admin": {
+        """Initialize default users in MongoDB if collection is empty"""
+        users_col = get_users_collection()
+        if users_col.count_documents({}) == 0:
+            default_users = [
+                {
+                    "username": "admin",
                     "password": self.hash_password("admin123"),
                     "role": "researcher",
                     "name": "System Administrator",
@@ -27,15 +28,17 @@ class AuthManager:
                     "phone": "+911234567890",
                     "created": datetime.now().isoformat()
                 },
-                "researcher": {
+                {
+                    "username": "researcher",
                     "password": self.hash_password("research123"),
-                    "role": "researcher", 
+                    "role": "researcher",
                     "name": "Emergency Researcher",
                     "email": "researcher@floodsystem.com",
                     "phone": "+911234567891",
                     "created": datetime.now().isoformat()
                 },
-                "authority": {
+                {
+                    "username": "authority",
                     "password": self.hash_password("authority123"),
                     "role": "authority",
                     "name": "Disaster Response Authority",
@@ -43,41 +46,36 @@ class AuthManager:
                     "phone": "+911234567893",
                     "created": datetime.now().isoformat()
                 }
-            }
-            self.save_users(default_users)
+            ]
+            users_col.insert_many(default_users)
     
     def hash_password(self, password):
         """Hash password using SHA-256"""
         return hashlib.sha256(password.encode()).hexdigest()
     
     def load_users(self):
-        """Load users from JSON file"""
-        try:
-            with open(self.users_file, 'r') as f:
-                return json.load(f)
-        except:
-            return {}
-    
-    def save_users(self, users):
-        """Save users to JSON file"""
-        with open(self.users_file, 'w') as f:
-            json.dump(users, f, indent=2)
+        """Load all users from MongoDB as a dict keyed by username"""
+        users_col = get_users_collection()
+        users = list(users_col.find({}))
+        return {user["username"]: user for user in users}
     
     def authenticate(self, username, password):
-        """Authenticate user credentials"""
-        users = self.load_users()
-        if username in users:
+        """Authenticate user credentials using MongoDB"""
+        users_col = get_users_collection()
+        user = users_col.find_one({"username": username})
+        if user:
             hashed_password = self.hash_password(password)
-            if users[username]["password"] == hashed_password:
-                return users[username]  # This will now include email and phone
+            if user["password"] == hashed_password:
+                return user
         return None
     
     def register_user(self, username, password, role, name, email, phone):
-        """Register new user with email and phone"""
-        users = self.load_users()
-        if username in users:
+        """Register new user with email and phone in MongoDB"""
+        users_col = get_users_collection()
+        if users_col.find_one({"username": username}):
             return False, "Username already exists"
-        users[username] = {
+        user = {
+            "username": username,
             "password": self.hash_password(password),
             "role": role,
             "name": name,
@@ -85,8 +83,17 @@ class AuthManager:
             "phone": phone,
             "created": datetime.now().isoformat()
         }
-        self.save_users(users)
+        users_col.insert_one(user)
         return True, "User registered successfully"
+    
+    def update_user_email_phone(self, username, email, phone):
+        """Update user email and phone in MongoDB"""
+        users_col = get_users_collection()
+        result = users_col.update_one(
+            {"username": username},
+            {"$set": {"email": email, "phone": phone}}
+        )
+        return result.modified_count > 0
 
 def show_login_page():
     """Display login page"""
@@ -126,9 +133,9 @@ def show_login_page():
                         st.session_state.user_role = user_data["role"]
                         st.session_state.user_name = user_data["name"]
                         st.session_state.username = username
-                        # CRITICAL: Use the actual email and phone from users.json
-                        st.session_state.user_email = user_data.get("email", "")  # From JSON
-                        st.session_state.user_phone = user_data.get("phone", "")  # From JSON
+                        # Use the actual email and phone from MongoDB
+                        st.session_state.user_email = user_data.get("email", "")
+                        st.session_state.user_phone = user_data.get("phone", "")
                         st.session_state.login_time = datetime.now()
 
                           
@@ -295,15 +302,13 @@ def show_user_info():
                             # Update session state
                             st.session_state.user_email = new_email
                             st.session_state.user_phone = new_phone
-                            
-                            # UPDATE JSON FILE as well
+
+                            # Update MongoDB user document
                             auth_manager = AuthManager()
-                            users = auth_manager.load_users()
-                            if st.session_state.username in users:
-                                users[st.session_state.username]["email"] = new_email
-                                users[st.session_state.username]["phone"] = new_phone
-                                auth_manager.save_users(users)
-                            
+                            auth_manager.update_user_email_phone(
+                                st.session_state.username, new_email, new_phone
+                            )
+
                             st.success("✅ Profile updated!")
                             st.rerun()
                         else:
