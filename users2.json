@@ -1,0 +1,50 @@
+{
+  "user01": {
+    "name": "Aarav Sharma",
+    "age": 34,
+    "gender": "Male",
+    "email": "aarav.sharma@example.com",
+    "phone": "+919876543210",
+    "address": "Whitefield, Bengaluru, Karnataka, India"
+  },
+  "user02": {
+    "name": "Meera Nair",
+    "age": 28,
+    "gender": "Female",
+    "email": "meera.nair@example.com",
+    "phone": "+919845678321",
+    "address": "Andheri West, Mumbai, Maharashtra, India"
+  },
+  "user03": {
+    "name": "Ravi Deshmukh",
+    "age": 45,
+    "gender": "Male",
+    "email": "ravi.deshmukh@example.com",
+    "phone": "+918765432198",
+    "address": "Kothrud, Pune, Maharashtra, India"
+  },
+  "user04": {
+    "name": "Sara Ahmed",
+    "age": 31,
+    "gender": "Female",
+    "email": "sara.ahmed@example.com",
+    "phone": "+919123456789",
+    "address": "Banjara Hills, Hyderabad, Telangana, India"
+  },
+  "user05": {
+    "name": "Karan Verma",
+    "age": 22,
+    "gender": "Male",
+    "email": "karan.verma@example.com",
+    "phone": "+919812345678",
+    "address": "MG Road, Kochi, Kerala, India"
+  },
+  "anisha816": {
+    "name": "Anisha Ajit",
+    "age": 21,
+    "gender": "Female",
+    "email": "anisha.ajit303@gmail.com",
+    "phone": "+916361473471",
+    "address": "Purva Heights, Flat No. 101, 1st Floor, Block A, Purva Heights, Near Purva Heights Club House, Kalyan Nagar, Bengaluru, Karnataka 560043"
+  }
+}

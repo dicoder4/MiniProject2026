@@ -16,7 +16,7 @@ from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from shapely.geometry import Point, LineString
 # Add this import at the top with other imports
-from emergency_notifications import get_flood_alert_email, send_sms_alert_auth
+from authority_notifs import get_flood_alert_email, send_sms_alert_auth, send_email_alert, find_nearest_safe_center_gmaps, emergency_sos
 import os
 import json
 from dotenv import load_dotenv
@@ -45,7 +45,7 @@ from risk_assessment import calculate_risk_level
 
 
 def show_authority_interface():
-    """Disaster Response Authority interface with coordinate input and smart evacuation"""
+    """Enhanced Disaster Response Authority interface with automatic loading"""
     
     st.markdown("""
     <div style='background: linear-gradient(90deg, #dc3545 0%, #fd7e14 100%); padding: 1.5rem; border-radius: 10px; color: white; text-align: center; margin-bottom: 2rem;'>
@@ -53,6 +53,14 @@ def show_authority_interface():
         <p><strong>🏢 Disaster Response Authority Portal - Emergency Planning & Evacuation</strong></p>
     </div>
     """, unsafe_allow_html=True)
+
+    users_path = os.path.join(os.path.dirname(__file__), "users2.json")
+    try:
+        with open(users_path, "r", encoding="utf-8") as f:
+            users = json.load(f)
+    except Exception as e:
+        st.error(f"Could not load users2.json: {e}")
+        users = []
     
     # Initialize session state for simulation data
     if 'simulation_data' not in st.session_state:
@@ -101,6 +109,116 @@ def show_authority_interface():
         except Exception as e:
             st.error(f"Error loading or validating stations: {e}")
             return [], pd.DataFrame()
+
+    def auto_load_infrastructure(location_name, lat, lon, station_name, peak_flood_level):
+        """Automatically load road network, infrastructure, and initialize simulator"""
+        progress_container = st.container()
+        
+        with progress_container:
+            # Progress tracking
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            try:
+                # Step 1: Load road network (25%)
+                status_text.text("🗺️ Loading road network...")
+                progress_bar.progress(25)
+                
+                network_dist = 2500  # Default network radius
+                filter_minor = True  # Filter minor roads by default
+                
+                G = load_road_network_with_filtering(location_name, lat, lon, network_dist, filter_minor)
+                
+                if G is None:
+                    st.error("❌ Failed to load road network")
+                    return False
+                
+                nodes, edges = ox.graph_to_gdfs(G)
+                
+                # Add travel time to edges for evacuation algorithms
+                walking_speed_mpm = 5 * 1000 / 60  # 5 km/h in meters per minute
+                for u, v, k, data in G.edges(keys=True, data=True):
+                    if 'length' in data:
+                        data['travel_time'] = data['length'] / walking_speed_mpm
+                        data['weight'] = data['length']
+                        data['base_cost'] = data['length']
+                        data['penalty'] = 0
+                
+                # Step 2: Load infrastructure (50%)
+                status_text.text("🏥 Loading hospitals and emergency services...")
+                progress_bar.progress(50)
+                
+                # Load hospitals
+                hospital_tags = {"amenity": "hospital"}
+                hospitals_gdf = get_osm_features(location_name, hospital_tags, "hospital")
+                
+                # Load police stations
+                police_tags = {"amenity": "police"}
+                police_gdf = get_osm_features(location_name, police_tags, "police station")
+                
+                # Step 3: Create elevation grid (75%)
+                status_text.text("🏔️ Creating elevation grid...")
+                progress_bar.progress(75)
+                
+                elev_gdf = create_elevation_grid(edges)
+                
+                # Step 4: Initialize flood simulator (100%)
+                status_text.text("🌊 Initializing flood simulator...")
+                progress_bar.progress(100)
+                
+                simulator = DynamicFloodSimulator(
+                    elev_gdf=elev_gdf,
+                    edges=edges,
+                    nodes=nodes,
+                    station=station_name,
+                    lat=lat,
+                    lon=lon,
+                    initial_people=50
+                )
+                
+                # Update session state with all loaded data
+                st.session_state.simulation_data.update({
+                    'G': G,
+                    'nodes': nodes,
+                    'edges': edges,
+                    'location_name': location_name,
+                    'lat': lat,
+                    'lon': lon,
+                    'station_name': station_name,
+                    'peak_flood_level': peak_flood_level,
+                    'hospitals_gdf': hospitals_gdf,
+                    'police_gdf': police_gdf,
+                    'elev_gdf': elev_gdf,
+                    'simulator': simulator,
+                    'network_loaded': True
+                })
+                
+                # Clear progress indicators
+                progress_bar.empty()
+                status_text.empty()
+                
+                # Show success messages
+                st.success(f"✅ Network loaded: {len(nodes)} nodes, {len(edges)} edges")
+                
+                if hospitals_gdf is not None and not hospitals_gdf.empty:
+                    st.success(f"✅ Found {len(hospitals_gdf)} hospitals")
+                else:
+                    st.warning("⚠️ No hospitals found - will generate emergency centers")
+                
+                if police_gdf is not None and not police_gdf.empty:
+                    st.success(f"✅ Found {len(police_gdf)} police stations")
+                else:
+                    st.warning("⚠️ No police stations found - will generate emergency centers")
+                
+                st.success("✅ Flood simulator ready!")
+                
+                return True
+                
+            except Exception as e:
+                progress_bar.empty()
+                status_text.empty()
+                st.error(f"❌ Error during automatic loading: {e}")
+                return False
 
     # Sidebar for authorities
     st.sidebar.title("🏢 Authority Controls")
@@ -157,200 +275,69 @@ def show_authority_interface():
         station_name = st.sidebar.text_input("Station name:", value=station_name if 'station_name' in locals() else "Manual Location")
         location_name = f"{station_name}, Manual Location"
 
-    # Create tabs (same as researcher but without Algorithm Comparison and Analytics)
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
-        "🗺️ Network Setup", 
-        "🌊 Flood Simulation", 
+    # Emergency SOS button
+    col_sos, col_gap = st.columns([1, 5])
+    with col_sos:
+        if st.button("🚨 MASS SOS", type="primary"):
+            emergency_sos(users, selected_state)
+            st.success("✅ SOS alerts sent using emergency_sos()")
+            
+    # Create tabs (combined simulation tab)
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "🌊 Flood Simulation & Control", 
         "🚶 Evacuation Planning",
         "📊 Analytics",
         "🆘 Mass SOS & Mock Centers"
     ])
     
-    # --- Tab 1: Setup & Network ---
+    # --- Tab 1: Combined Network Setup & Flood Simulation ---
     with tab1:
-        st.header("🗺️ Road Network & Infrastructure")
+        st.header("🌊 Integrated Flood Simulation Dashboard")
         
         if 'location_name' in locals():
-            col1, col2 = st.columns([1, 2])
+            # Check if network is already loaded for this location
+            current_location_key = f"{station_name}_{lat}_{lon}"
+            stored_location_key = st.session_state.simulation_data.get('location_key', '')
             
-            with col1:
-                st.subheader("Network Parameters")
+            # Auto-load if location changed or not loaded
+            if (not st.session_state.simulation_data.get('network_loaded', False) or 
+                current_location_key != stored_location_key):
                 
-                # Network distance
-                network_dist = st.slider("Network Radius (meters)", 1000, 5000, 2000, 100)
+                st.info("🔄 Automatically loading network and infrastructure for the selected location...")
                 
-                # Filter minor roads option
-                filter_minor = st.checkbox("Filter Minor Roads", value=True)
-                
-                # Load network button
-                if st.button("🔄 Load Road Network", type="primary"):
-                    with st.spinner("Loading road network..."):
-                        try:
-                            # Use your custom function
-                            G = load_road_network_with_filtering(location_name, lat, lon, network_dist, filter_minor)
-                            
-                            if G is not None:
-                                nodes, edges = ox.graph_to_gdfs(G)
-                                
-                                # Add travel time to edges for evacuation algorithms
-                                walking_speed_mpm = 5 * 1000 / 60  # 5 km/h in meters per minute
-                                for u, v, k, data in G.edges(keys=True, data=True):
-                                    if 'length' in data:
-                                        data['travel_time'] = data['length'] / walking_speed_mpm
-                                        data['weight'] = data['length']
-                                        data['base_cost'] = data['length']
-                                        data['penalty'] = 0
-                                
-                                st.session_state.simulation_data.update({
-                                    'G': G,
-                                    'nodes': nodes,
-                                    'edges': edges,
-                                    'location_name': location_name,
-                                    'lat': lat,
-                                    'lon': lon,
-                                    'station_name': station_name,
-                                    'peak_flood_level': peak_flood_level
-                                })
-                                st.success(f"✅ Loaded network with {len(nodes)} nodes and {len(edges)} edges")
-                            else:
-                                st.error("❌ Failed to load road network")
-                        except Exception as e:
-                            st.error(f"❌ Failed to load road network: {e}")
-                
-                # Load OSM features
-                if st.button("🏥 Load Infrastructure"):
-                    if 'edges' in st.session_state.simulation_data:
-                        with st.spinner("Loading hospitals and police stations..."):
-                            try:
-                                # Load hospitals using your custom function
-                                hospital_tags = {"amenity": "hospital"}
-                                hospitals_gdf = get_osm_features(location_name, hospital_tags, "hospital")
-                                
-                                # Load police stations
-                                police_tags = {"amenity": "police"}
-                                police_gdf = get_osm_features(location_name, police_tags, "police station")
-                                
-                                st.session_state.simulation_data.update({
-                                    'hospitals_gdf': hospitals_gdf,
-                                    'police_gdf': police_gdf
-                                })
-                                
-                                # Show results
-                                if hospitals_gdf is not None and not hospitals_gdf.empty:
-                                    st.success(f"✅ Found {len(hospitals_gdf)} hospitals")
-                                else:
-                                    st.warning("⚠️ No hospitals found")
-                                
-                                if police_gdf is not None and not police_gdf.empty:
-                                    st.success(f"✅ Found {len(police_gdf)} police stations")
-                                else:
-                                    st.warning("⚠️ No police stations found")
-                            except Exception as e:
-                                st.error(f"Error loading infrastructure: {e}")
-                    else:
-                        st.warning("⚠️ Please load road network first")
-            
-            with col2:
-                st.subheader("Network Visualization")
-                
-                if 'edges' in st.session_state.simulation_data:
-                    # Create Folium map
-                    m = folium.Map(location=[lat, lon], zoom_start=13)
-                    
-                    # Add road network
-                    edges_data = st.session_state.simulation_data['edges']
-                    for idx, row in edges_data.iterrows():
-                        coords = list(row.geometry.coords)
-                        folium.PolyLine(
-                            locations=[[coord[1], coord[0]] for coord in coords],
-                            color='blue',
-                            weight=2,
-                            opacity=0.7
-                        ).add_to(m)
-                    
-                    # Add infrastructure if loaded
-                    if 'hospitals_gdf' in st.session_state.simulation_data:
-                        hospitals = st.session_state.simulation_data['hospitals_gdf']
-                        if hospitals is not None and not hospitals.empty:
-                            for idx, row in hospitals.iterrows():
-                                if hasattr(row.geometry, 'centroid'):
-                                    point = row.geometry.centroid
-                                else:
-                                    point = row.geometry
-                                
-                                folium.Marker(
-                                    [point.y, point.x],
-                                    popup=f"Hospital: {row.get('name', 'Unnamed')}",
-                                    icon=folium.Icon(color='red', icon='plus')
-                                ).add_to(m)
-                    
-                    if 'police_gdf' in st.session_state.simulation_data:
-                        police = st.session_state.simulation_data['police_gdf']
-                        if police is not None and not police.empty:
-                            for idx, row in police.iterrows():
-                                if hasattr(row.geometry, 'centroid'):
-                                    point = row.geometry.centroid
-                                else:
-                                    point = row.geometry
-                                
-                                folium.Marker(
-                                    [point.y, point.x],
-                                    popup=f"Police: {row.get('name', 'Unnamed')}",
-                                    icon=folium.Icon(color='blue', icon='shield')
-                                ).add_to(m)
-                    
-                    # Add center marker
-                    folium.Marker(
-                        [lat, lon],
-                        popup=f"{station_name}",
-                        icon=folium.Icon(color='green', icon='home')
-                    ).add_to(m)
-                    
-                    st_folium(m, width=700, height=500)
+                if auto_load_infrastructure(location_name, lat, lon, station_name, peak_flood_level):
+                    st.session_state.simulation_data['location_key'] = current_location_key
+                    st.rerun()  # Refresh to show the loaded content
                 else:
-                    st.info("👆 Load road network to see visualization")
-
-    # --- Tab 2: Flood Simulation ---
-    with tab2:
-        st.header("🌊 Dynamic Flood Simulation")
-        
-        if 'edges' in st.session_state.simulation_data:
-            col1, col2 = st.columns([1, 2])
+                    st.error("Failed to load network infrastructure. Please try selecting a different location.")
+                    st.stop()
             
-            with col1:
-                st.subheader("Simulation Parameters")
+            # Show simulation controls if network is loaded
+            if st.session_state.simulation_data.get('network_loaded', False):
+                col1, col2 = st.columns([1, 2])
                 
-                # Initialize simulator button
-                if st.button("🌊 Initialize Flood Simulator"):
-                    with st.spinner("Creating elevation grid and initializing simulator..."):
-                        try:
-                            edges = st.session_state.simulation_data['edges']
-                            nodes = st.session_state.simulation_data['nodes']
-                            
-                            # Create elevation grid using your function
-                            elev_gdf = create_elevation_grid(edges)
-                            
-                            # Initialize simulator using your class
-                            simulator = DynamicFloodSimulator(
-                                elev_gdf=elev_gdf,
-                                edges=edges,
-                                nodes=nodes,
-                                station=station_name,
-                                lat=lat,
-                                lon=lon,
-                                initial_people=50
-                            )
-                            
-                            st.session_state.simulation_data['simulator'] = simulator
-                            st.session_state.simulation_data['elev_gdf'] = elev_gdf
-                            
-                            st.success("✅ Flood simulator initialized!")
-                        except Exception as e:
-                            st.error(f"Error initializing simulator: {e}")
-                
-                # Simulation controls
-                if 'simulator' in st.session_state.simulation_data:
-                    st.subheader("Live Controls")
+                with col1:
+                    st.subheader("🎛️ Simulation Controls")
+                    
+                    # Show network stats
+                    st.write("### 📊 Network Information")
+                    nodes = st.session_state.simulation_data['nodes']
+                    edges = st.session_state.simulation_data['edges']
+                    st.metric("Road Nodes", len(nodes))
+                    st.metric("Road Segments", len(edges))
+                    
+                    hospitals_gdf = st.session_state.simulation_data.get('hospitals_gdf')
+                    police_gdf = st.session_state.simulation_data.get('police_gdf')
+                    
+                    if hospitals_gdf is not None and not hospitals_gdf.empty:
+                        st.metric("Hospitals", len(hospitals_gdf))
+                    if police_gdf is not None and not police_gdf.empty:
+                        st.metric("Police Stations", len(police_gdf))
+                    
+                    st.markdown("---")
+                    
+                    # Simulation parameters
+                    st.write("### 🌊 Flood Parameters")
                     
                     # Flood level slider
                     flood_level = st.slider(
@@ -358,7 +345,8 @@ def show_authority_interface():
                         min_value=0,
                         max_value=100,
                         value=20,
-                        step=5
+                        step=5,
+                        help="Percentage of area affected by flooding"
                     ) / 100.0
                     
                     # Number of people
@@ -367,14 +355,20 @@ def show_authority_interface():
                         min_value=10,
                         max_value=200,
                         value=50,
-                        step=10
+                        step=10,
+                        help="Number of people in the simulation"
                     )
                     
-                    # Update simulation
-                    if st.button("🔄 Update Simulation"):
+                    # Advanced parameters (collapsible)
+                    with st.expander("⚙️ Advanced Parameters"):
+                        walking_speed = st.slider("Walking Speed (km/h)", 3, 8, 5, 1)
+                        risk_threshold = st.slider("Risk Alert Threshold (%)", 10, 50, 25, 5)
+                    
+                    # Update simulation button
+                    if st.button("🔄 Run Flood Simulation", type="primary"):
                         simulator = st.session_state.simulation_data['simulator']
                         
-                        with st.spinner("Running flood simulation..."):
+                        with st.spinner("Running comprehensive flood simulation..."):
                             # Update people count
                             simulator.update_people_count(num_people)
                             
@@ -400,53 +394,188 @@ def show_authority_interface():
                             
                             st.session_state.simulation_data['safe_centers_gdf'] = safe_centers_gdf
                             
-                            # Display statistics
-                            st.write("### 📊 Current Simulation Stats")
-                            total_people = len(simulator.people_gdf)
-                            flooded_people = len(impact['flooded_people'])
-                            safe_people = len(impact['safe_people'])
-                            
-                            # Use sequential layout instead of nested columns
-                            st.metric("Total People", total_people)
-                            st.metric("In Flood Zone", flooded_people, 
-                                    f"{flooded_people/total_people*100:.1f}%" if total_people > 0 else "0%")
-                            st.metric("Safe", safe_people,
-                                    f"{safe_people/total_people*100:.1f}%" if total_people > 0 else "0%")
-                            
-                            # Enhanced risk assessment
-                            risk_pct = flooded_people / total_people * 100 if total_people > 0 else 0
-                            risk_level, _ = calculate_risk_level(flooded_people, total_people)
-                            
-                            if "HIGH RISK" in risk_level:
-                                st.markdown(f'<div style="background-color: #dc3545; color: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">{risk_level}: {risk_pct:.1f}% of population in flood zone</div>', unsafe_allow_html=True)
-                            elif "MEDIUM RISK" in risk_level:
-                                st.markdown(f'<div style="background-color: #ffc107; color: black; padding: 1rem; border-radius: 5px; margin: 1rem 0;">{risk_level}: {risk_pct:.1f}% of population in flood zone</div>', unsafe_allow_html=True)
-                            else:
-                                st.markdown(f'<div style="background-color: #28a745; color: white; padding: 1rem; border-radius: 5px; margin: 1rem 0;">{risk_level}: {risk_pct:.1f}% of population in flood zone</div>', unsafe_allow_html=True)
-            
-            with col2:
-                st.subheader("Flood Simulation Map")
+                            st.success("✅ Simulation complete!")
+                    
+                    # Show simulation statistics
+                    if 'current_impact' in st.session_state.simulation_data:
+                        st.markdown("---")
+                        st.write("### 📊 Simulation Results")
+                        
+                        simulator = st.session_state.simulation_data['simulator']
+                        impact = st.session_state.simulation_data['current_impact']
+                        
+                        total_people = len(simulator.people_gdf)
+                        flooded_people = len(impact['flooded_people'])
+                        safe_people = len(impact['safe_people'])
+                        
+                        # Metrics in a clean layout
+                        st.metric("Total Population", total_people)
+                        st.metric("In Danger Zone", flooded_people, 
+                                f"{flooded_people/total_people*100:.1f}%" if total_people > 0 else "0%")
+                        st.metric("Safe", safe_people,
+                                f"{safe_people/total_people*100:.1f}%" if total_people > 0 else "0%")
+                        
+                        # Risk assessment with color coding
+                        risk_pct = flooded_people / total_people * 100 if total_people > 0 else 0
+                        risk_level, _ = calculate_risk_level(flooded_people, total_people)
+                        
+                        if "HIGH RISK" in risk_level:
+                            st.markdown(f'<div style="background-color: #dc3545; color: white; padding: 1rem; border-radius: 5px; margin: 1rem 0; text-align: center;"><strong>{risk_level}</strong><br>{risk_pct:.1f}% of population in flood zone</div>', unsafe_allow_html=True)
+                        elif "MEDIUM RISK" in risk_level:
+                            st.markdown(f'<div style="background-color: #ffc107; color: black; padding: 1rem; border-radius: 5px; margin: 1rem 0; text-align: center;"><strong>{risk_level}</strong><br>{risk_pct:.1f}% of population in flood zone</div>', unsafe_allow_html=True)
+                        else:
+                            st.markdown(f'<div style="background-color: #28a745; color: white; padding: 1rem; border-radius: 5px; margin: 1rem 0; text-align: center;"><strong>{risk_level}</strong><br>{risk_pct:.1f}% of population in flood zone</div>', unsafe_allow_html=True)
+                        
+                        # Safe centers information
+                        if 'safe_centers_gdf' in st.session_state.simulation_data:
+                            safe_centers = st.session_state.simulation_data['safe_centers_gdf']
+                            st.metric("Available Safe Centers", len(safe_centers))
                 
-                if 'current_impact' in st.session_state.simulation_data:
-                    impact = st.session_state.simulation_data['current_impact']
-                    simulator = st.session_state.simulation_data['simulator']
+                with col2:
+                    st.subheader("🗺️ Real-time Simulation Map")
                     
-                    # Create flood simulation map using your function
-                    flood_map = create_flood_folium_map(
-                        lat, lon, 
-                        simulator.people_gdf, 
-                        impact,
-                        st.session_state.simulation_data['edges']
-                    )
+                    if 'current_impact' in st.session_state.simulation_data:
+                        impact = st.session_state.simulation_data['current_impact']
+                        simulator = st.session_state.simulation_data['simulator']
+                        
+                        # Create comprehensive flood simulation map
+                        flood_map = create_flood_folium_map(
+                            lat, lon, 
+                            simulator.people_gdf, 
+                            impact,
+                            st.session_state.simulation_data['edges']
+                        )
+                        
+                        # Add infrastructure to map
+                        if 'hospitals_gdf' in st.session_state.simulation_data:
+                            hospitals = st.session_state.simulation_data['hospitals_gdf']
+                            if hospitals is not None and not hospitals.empty:
+                                for idx, row in hospitals.iterrows():
+                                    if hasattr(row.geometry, 'centroid'):
+                                        point = row.geometry.centroid
+                                    else:
+                                        point = row.geometry
+                                    
+                                    folium.Marker(
+                                        [point.y, point.x],
+                                        popup=f"🏥 Hospital: {row.get('name', 'Unnamed')}",
+                                        icon=folium.Icon(color='red', icon='plus')
+                                    ).add_to(flood_map)
+                        
+                        if 'police_gdf' in st.session_state.simulation_data:
+                            police = st.session_state.simulation_data['police_gdf']
+                            if police is not None and not police.empty:
+                                for idx, row in police.iterrows():
+                                    if hasattr(row.geometry, 'centroid'):
+                                        point = row.geometry.centroid
+                                    else:
+                                        point = row.geometry
+                                    
+                                    folium.Marker(
+                                        [point.y, point.x],
+                                        popup=f"👮 Police: {row.get('name', 'Unnamed')}",
+                                        icon=folium.Icon(color='blue', icon='shield')
+                                    ).add_to(flood_map)
+                        
+                        # Add safe centers if available
+                        if 'safe_centers_gdf' in st.session_state.simulation_data:
+                            safe_centers = st.session_state.simulation_data['safe_centers_gdf']
+                            for idx, row in safe_centers.iterrows():
+                                folium.Marker(
+                                    [row.geometry.y, row.geometry.x],
+                                    popup=f"🏠 Safe Center: {row.get('name', 'Emergency Center')}",
+                                    icon=folium.Icon(color='green', icon='home')
+                                ).add_to(flood_map)
+                        
+                        st_folium(flood_map, width=700, height=600)
+                        
+                        # Quick action buttons
+                        st.markdown("### 🚨 Quick Actions")
+                        col_act1, col_act2, col_act3 = st.columns(3)
+                        
+                        with col_act1:
+                            if st.button("📢 Alert Citizens", type="secondary"):
+                                st.success("📱 Mass alerts sent to affected areas")
+                        
+                        with col_act2:
+                            if st.button("🚁 Deploy Rescue", type="secondary"):
+                                st.success("🚁 Rescue teams dispatched")
+                        
+                        with col_act3:
+                            if st.button("🏥 Prepare Centers", type="secondary"):
+                                st.success("🏥 Emergency centers activated")
                     
-                    st_folium(flood_map, width=700, height=500)
-                else:
-                    st.info("👆 Initialize and run simulation to see results")
+                    else:
+                        # Show network map without simulation
+                        m = folium.Map(location=[lat, lon], zoom_start=13)
+                        
+                        # Add road network
+                        edges_data = st.session_state.simulation_data['edges']
+                        for idx, row in edges_data.iterrows():
+                            coords = list(row.geometry.coords)
+                            folium.PolyLine(
+                                locations=[[coord[1], coord[0]] for coord in coords],
+                                color='blue',
+                                weight=2,
+                                opacity=0.7
+                            ).add_to(m)
+                        
+                        # Add center marker
+                        folium.Marker(
+                            [lat, lon],
+                            popup=f"📍 {station_name}",
+                            icon=folium.Icon(color='green', icon='home')
+                        ).add_to(m)
+
+                        if 'hospitals_gdf' in st.session_state.simulation_data:
+                            hospitals = st.session_state.simulation_data['hospitals_gdf']
+                            if hospitals is not None and not hospitals.empty:
+                                for idx, row in hospitals.iterrows():
+                                    if hasattr(row.geometry, 'centroid'):
+                                        point = row.geometry.centroid
+                                    else:
+                                        point = row.geometry
+                                    
+                                    folium.Marker(
+                                        [point.y, point.x],
+                                        popup=f"🏥 Hospital: {row.get('name', 'Unnamed')}",
+                                        icon=folium.Icon(color='red', icon='plus')
+                                    ).add_to(m)
+                        
+                        # Add police stations to initial map
+                        if 'police_gdf' in st.session_state.simulation_data:
+                            police = st.session_state.simulation_data['police_gdf']
+                            if police is not None and not police.empty:
+                                for idx, row in police.iterrows():
+                                    if hasattr(row.geometry, 'centroid'):
+                                        point = row.geometry.centroid
+                                    else:
+                                        point = row.geometry
+                                    
+                                    folium.Marker(
+                                        [point.y, point.x],
+                                        popup=f"👮 Police: {row.get('name', 'Unnamed')}",
+                                        icon=folium.Icon(color='blue', icon='shield')
+                                    ).add_to(m)
+                        
+                        # Add safe centers to initial map (if they exist)
+                        if 'safe_centers_gdf' in st.session_state.simulation_data:
+                            safe_centers = st.session_state.simulation_data['safe_centers_gdf']
+                            if not safe_centers.empty:
+                                for idx, row in safe_centers.iterrows():
+                                    folium.Marker(
+                                        [row.geometry.y, row.geometry.x],
+                                        popup=f"🏠 Safe Center: {row.get('name', 'Emergency Center')}",
+                                        icon=folium.Icon(color='green', icon='home')
+                                    ).add_to(m)
+                        
+                        st_folium(m, width=700, height=500)
+                        st.info("👆 Run flood simulation to see affected areas and evacuation routes")
         else:
-            st.warning("⚠️ Please load road network in the Setup tab first")
+            st.warning("⚠️ Please select a station from the sidebar to begin")
 
     # --- Tab 3: Evacuation Planning (Auto Best Algorithm) ---
-    with tab3:
+    with tab2:
         st.header("🚶 Evacuation Route Planning (Automatic Best Algorithm)")
 
         if 'current_impact' in st.session_state.simulation_data:
@@ -641,7 +770,7 @@ def show_authority_interface():
             st.warning("⚠️ Please run flood simulation first")
 
     # --- Tab 4: Analytics ---
-    with tab4:
+    with tab3:
         st.header("📊 Comprehensive Analytics Dashboard")
         
         # CHECK IF EVACUATION RESULT EXISTS IN SESSION STATE
@@ -845,16 +974,10 @@ def show_authority_interface():
             st.info("🏃‍♂️ Complete the evacuation planning to see comprehensive analytics")
 
     # --- Tab 5: Mass SOS & Mock Centers ---
-    with tab5:
+    with tab4:
         st.header("🆘 Mass SOS Alert & Mock Center Directions")
 
-        users_path = os.path.join(os.path.dirname(__file__), "users.json")
-        try:
-            with open(users_path, "r", encoding="utf-8") as f:
-                users = json.load(f)
-        except Exception as e:
-            st.error(f"Could not load users.json: {e}")
-            users = []
+        
         # Get mock centers from session state
         safe_centers_gdf = st.session_state.simulation_data.get('safe_centers_gdf')
         if safe_centers_gdf is None or safe_centers_gdf.empty:
@@ -873,7 +996,7 @@ def show_authority_interface():
                     "gmaps_link": gmaps_link
                 })
 
-            st.write("### 🏥 Mock/Emergency Centers to be sent:")
+            st.write("### 🏥 Emergency Centers to be sent:")
             for c in mock_centers_info:
                 st.markdown(f"- **{c['name']}** ({c['type']}) [Google Maps]({c['gmaps_link']})")
 
@@ -886,103 +1009,112 @@ def show_authority_interface():
             ])
 
             html_message = f"""
-            <ul>
-                {html_centers}
-            </ul>
             </div>
             </body>
             </html>
             """
 
             if st.button("🚨 SEND MASS SOS TO ALL USERS", type="primary"):
-                from emergency_notifications import notification_system
                 sent_count = 0
                 failed_count = 0
                 
                 print("Users data:", users)
                 
-                # Extract emails from users dictionary
                 user_emails = []
                 user_phone = []
+
                 for username, user_data in users.items():
-                    if isinstance(user_data, dict) and 'email' in user_data:
-                        email = user_data['email']
-                        if email:  # Check if email is not empty
+                    if isinstance(user_data, dict):
+                        email = user_data.get('email')
+                        phone = user_data.get('phone')
+                        address = user_data.get('address')
+                        name = user_data.get('name', username)
+
+                        if email:
                             user_emails.append({
                                 'email': email,
-                                'name': user_data.get('name', username),
-                                'username': username
+                                'name': name,
+                                'username': username,
+                                'address': address
                             })
-                            print(f"Found email for {username}: {email}")
 
-                    if isinstance(user_data, dict) and 'phone' in user_data:
-                        phone = user_data['phone']
-                        if phone:  # Check if email is not empty
+                        if phone:
                             user_phone.append({
                                 'phone': phone,
-                                'name': user_data.get('name', username),
-                                'username': username
+                                'name': name,
+                                'username': username,
+                                'address': address
                             })
-                            print(f"Found phone for {username}: {email}")
-                
-                print(f"Total emails found: {len(user_emails)}")
-                
+
                 if not user_emails:
                     st.warning("⚠️ No user emails found in the system!")
                 else:
-                    # Show progress
                     progress_bar = st.progress(0)
                     status_text = st.empty()
-                    
-                    # Send emails to all users
+
                     for i, user_info in enumerate(user_emails):
                         email = user_info['email']
                         name = user_info['name']
                         username = user_info['username']
+                        address = user_info.get('address', '')
                         user_sub, user_message = get_flood_alert_email(name, selected_state)
+
+                        nearest = find_nearest_safe_center_gmaps(address, mock_centers_info)
+
+                        if nearest:
+                            center_html = f"""
+                                <p><b>🚩 Nearest Safe Center:</b> {nearest['name']} ({nearest['type']})<br>
+                                Distance: {nearest['distance_km']:.2f} km<br>
+                                <a href="{nearest['gmaps_link']}">📍 Google Maps</a></p>
+                            """
+                            center_sms = f"Nearest Safe Center: {nearest['name']} ({nearest['type']}) - {nearest['gmaps_link']} ({nearest['distance_km']:.2f} km)"
+                        else:
+                            center_html = "<p>🚫 Unable to locate a safe center.</p>"
+                            center_sms = "No nearby safe center found."
+
                         try:
-                            print(email,user_sub, user_message)
-                            # Send the email
-                            '''notification_system.send_email_alert(
+                            print(email, user_sub)
+                            full_html = user_message + center_html + html_message
+
+                            send_email_alert(
                                 email, 
                                 user_sub, 
-                                user_message+html_message, 
+                                full_html,
                                 is_html=True
-                            )'''
+                            )
                             sent_count += 1
-                            
                         except Exception as e:
                             failed_count += 1
-                            st.error(f"❌ Failed to send to {name} ({email}): {str(e)}")
-                            print(f"Error sending to {email}: {e}")
-                        
-                        # Update progress
+                            st.error(f"❌ Failed to send email to {name} ({email}): {e}")
+                            print(f"Email Error: {e}")
+
                         progress_bar.progress((i + 1) / len(user_emails))
 
-                    str_centers = " "
-                    for c in mock_centers_info:
-                        str_centers += f"{c['name']} ({c['type']}) - {c['gmaps_link']} ({c['lat']:.5f}, {c['lon']:.5f})\n"
                     for i, user_info in enumerate(user_phone):
-                        print(f"Sending SMS to {user_info['name']} ({user_info['phone']})")
                         phone = user_info['phone']
                         name = user_info['name']
-                        username = user_info['username']
+                        address = user_info.get('address', '')
+
+                        nearest = find_nearest_safe_center_gmaps(address, mock_centers_info)
+                        if nearest:
+                            center_sms = f"Nearest Safe Center: {nearest['name']} ({nearest['type']}) - {nearest['gmaps_link']} ({nearest['distance_km']:.2f} km)"
+                        else:
+                            center_sms = "No nearby safe center found."
+
                         try:
-                        
-                            send_sms_alert_auth(name,phone,selected_state)
+                            print(f"Sending SMS to {name} at {phone}")
+                            message = f"🚨 Flood Alert for {selected_state}\n{name}, {center_sms}"
+
+                            send_sms_alert_auth(name, phone, selected_state)
                             sent_count += 1
-                            
                         except Exception as e:
                             failed_count += 1
-                    
-                    # Final status
+                            st.error(f"❌ Failed to send SMS to {name} ({phone}): {e}")
+
                     status_text.text("Mass notification complete!")
-                    
-                    if sent_count > 0:
-                        st.success(f"✅ Successfully sent SOS alerts to {sent_count} users!")
-                    
-                    if failed_count > 0:
-                        st.warning(f"⚠️ Failed to send to {failed_count} users. Check logs for details.")
+                    st.success(f"✅ Successfully sent alerts to {sent_count} users.")
+                    if failed_count:
+                        st.warning(f"⚠️ Failed for {failed_count} users.")
                     
                     # Summary
                     st.info(f"📊 Summary: {sent_count} successful, {failed_count} failed out of {len(user_emails)} total emails")
