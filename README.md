@@ -6,11 +6,11 @@ A real-time flood evacuation planning system that combines digital twin technolo
 
 This project implements a sophisticated flood evacuation system that:
 - Simulates flood scenarios using dynamic elevation models
-- Integrates real-time traffic data from Google Maps
 - Provides multiple evacuation routing algorithms
 - Supports both emergency responders and citizens
 - Visualizes flood impact and evacuation routes
 - Includes role-based access control
+- Google Maps API integration for efficient safe center finding
 
 ## Features
 
@@ -27,6 +27,8 @@ This project implements a sophisticated flood evacuation system that:
   - Citizen Interface
 - 📊 Risk assessment and recommendations
 - 🏥 Safe center identification and capacity management
+- 🆘 SOS alerting and Evacuation Plan Notifications
+
 
 ## Project Structure
 
@@ -64,6 +66,8 @@ pip install -r requirements.txt
 ```
 GOOGLE_MAPS_API_KEY=your_api_key_here
 ```
+- Add your MONGO_URL
+- Add other credentials, tokens that are required for email and SMS notifications 
 
 ## Usage
 
