@@ -485,21 +485,7 @@ def show_authority_interface():
                         
                         st_folium(flood_map, width=700, height=600)
                         
-                        # Quick action buttons
-                        st.markdown("### 🚨 Quick Actions")
-                        col_act1, col_act2, col_act3 = st.columns(3)
-                        
-                        with col_act1:
-                            if st.button("📢 Alert Citizens", type="secondary"):
-                                st.success("📱 Mass alerts sent to affected areas")
-                        
-                        with col_act2:
-                            if st.button("🚁 Deploy Rescue", type="secondary"):
-                                st.success("🚁 Rescue teams dispatched")
-                        
-                        with col_act3:
-                            if st.button("🏥 Prepare Centers", type="secondary"):
-                                st.success("🏥 Emergency centers activated")
+
                     
                     else:
                         # Show network map without simulation

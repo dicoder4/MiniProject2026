@@ -299,16 +299,6 @@ def show_researcher_interface():
         
         st.sidebar.write(f"**Peak Flood Level:** {peak_flood_level:.1f}m")
 
-    # Manual coordinates override (optional)
-    st.sidebar.subheader("🎯 Manual Override (Optional)")
-    use_manual = st.sidebar.checkbox("Use manual coordinates")
-    if use_manual:
-        lat = st.sidebar.number_input("Latitude:", value=lat if 'lat' in locals() else 19.0760, format="%.6f")
-        lon = st.sidebar.number_input("Longitude:", value=lon if 'lon' in locals() else 72.8777, format="%.6f")
-        peak_flood_level = st.sidebar.number_input("Peak flood level (m):", value=peak_flood_level if 'peak_flood_level' in locals() else 3.0, min_value=0.1, max_value=10.0)
-        station_name = st.sidebar.text_input("Station name:", value=station_name if 'station_name' in locals() else "Manual Location")
-        location_name = f"{station_name}, Manual Location"
-
     # Create tabs for researchers (all tabs)
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "🗺️ Network Setup", 
