@@ -13,6 +13,7 @@ contextily
 streamlit
 streamlit-folium
 plotly
+selenium
 
 # Geocoding and traffic
 geopy
@@ -28,6 +29,7 @@ requests
 
 # Utility
 haversine
+pymongo
 
 # Testing
 pytest

@@ -10,6 +10,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 import logging
 from typing import List, Dict, Optional
+from db_utils import get_users_collection
 
 
 # Configure logging
@@ -77,31 +78,22 @@ class EmergencyNotificationSystem:
 # MOVE THESE FUNCTIONS OUTSIDE THE CLASS - AT MODULE LEVEL
 
 def get_all_authorities():
-    """Get all users with authority role from users.json"""
+    """Get all users with authority role from MongoDB"""
     try:
-        import json
-        import os
-        
-        users_file = "users.json"
-        if not os.path.exists(users_file):
-            return []
-        
-        with open(users_file, 'r') as f:
-            users = json.load(f)
-        
+        from db_utils import get_all_users
+        users = get_all_users()
         authorities = []
-        for username, user_data in users.items():
-            if user_data.get('role') == 'authority':
+        for user in users:
+            if user.get('role') == 'authority':
                 authorities.append({
-                    'username': username,
-                    'name': user_data.get('name', 'Unknown'),
-                    'email': user_data.get('email', ''),
-                    'phone': user_data.get('phone', '')
+                    'username': user.get('username', ''),
+                    'name': user.get('name', 'Unknown'),
+                    'email': user.get('email', ''),
+                    'phone': user.get('phone', '')
                 })
-        
         return authorities
     except Exception as e:
-        logger.error(f"Failed to load authorities: {e}")
+        logger.error(f"Failed to load authorities from MongoDB: {e}")
         return []
 
 def send_evacuation_plan_to_authorities(researcher_data: Dict, evacuation_data: Dict, location_data: Dict, map_image_base64: str = None) -> Dict:

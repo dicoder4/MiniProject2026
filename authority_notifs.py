@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from db_utils import get_users_collection
 
 import logging
 
@@ -125,80 +126,82 @@ def send_sms_alert_auth(user_name, user_ph, state):
         return None
     
     
-def emergency_sos(users,state) :
-                user_emails = []
-                user_phone = []
+def get_all_users():
+    users_col = get_users_collection()
+    return list(users_col.find({}))
 
-                for username, user_data in users.items():
-                    if isinstance(user_data, dict):
-                        email = user_data.get('email')
-                        phone = user_data.get('phone')
-                        address = user_data.get('address')
-                        name = user_data.get('name', username)
+def emergency_sos(users, state):
+    user_emails = []
+    user_phone = []
+    # Accepts users as a list of dicts (from MongoDB)
+    for user_data in users:
+        email = user_data.get('email')
+        phone = user_data.get('phone')
+        address = user_data.get('address', '')
+        name = user_data.get('name', user_data.get('username', ''))
+        username = user_data.get('username', '')
+        if email:
+            user_emails.append({
+                'email': email,
+                'name': name,
+                'username': username,
+                'address': address
+            })
+        if phone:
+            user_phone.append({
+                'phone': phone,
+                'name': name,
+                'username': username,
+                'address': address
+            })
+    if state == "Maharashtra":
+         instructions = [
+        "शांत राहा. घाबरू नका. / Stay calm. Do not panic.",
+        "तत्काळ उंचीवर किंवा जवळच्या सुरक्षित केंद्रावर स्थलांतर करा. / Move to higher ground or nearest safe center immediately."]
+         user_email_message = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="background-color: #dc3545; color: white; padding: 20px; text-align: center;">
+                <h1>{STATE_SMS_MAP['Maharashtra']}</h1>
+                <h1>🚨 EMERGENCY FLOOD EVACUATION ALERT</h1>
+            </div>
+            <div style="padding: 20px;">
+                <ol>
+                    {"".join(f"<li>{instruction}</li>" for instruction in instructions)}
+                </ol>
+            </div>
+        </body>
+        </html>
+        """
+         for user in user_emails:
+                send_email_alert(user['email'],"🚨 तातडीची सूचना: पूर स्थलांतर आवश्यक - Flood Evacuation Required",user_email_message, is_html=True)
 
-                        if email:
-                            user_emails.append({
-                                'email': email,
-                                'name': name,
-                                'username': username,
-                                'address': address
-                            })
+         for user in user_phone:
+                send_sms_alert_auth(user['name'], user['phone'], state)
 
-                        if phone:
-                            user_phone.append({
-                                'phone': phone,
-                                'name': name,
-                                'username': username,
-                                'address': address
-                            })
-                if state == "Maharashtra":
-                     instructions = [
-            "शांत राहा. घाबरू नका. / Stay calm. Do not panic.",
-            "तत्काळ उंचीवर किंवा जवळच्या सुरक्षित केंद्रावर स्थलांतर करा. / Move to higher ground or nearest safe center immediately."]
-                     user_email_message = f"""
-                    <html>
-                    <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-                        <div style="background-color: #dc3545; color: white; padding: 20px; text-align: center;">
-                            <h1>{STATE_SMS_MAP['Maharashtra']}</h1>
-                            <h1>🚨 EMERGENCY FLOOD EVACUATION ALERT</h1>
-                        </div>
-                        <div style="padding: 20px;">
-                            <ol>
-                                {"".join(f"<li>{instruction}</li>" for instruction in instructions)}
-                            </ol>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                     for user in user_emails:
-                            send_email_alert(user['email'],"🚨 तातडीची सूचना: पूर स्थलांतर आवश्यक - Flood Evacuation Required",user_email_message, is_html=True)
-
-                     for user in user_phone:
-                            send_sms_alert_auth(user['name'], user['phone'], state)
-
-                elif state == "Karnataka":
-                     instructions = [ "ಶಾಂತವಾಗಿರಿ. ಆತಂಕಪಡಬೇಡಿ. / Stay calm. Do not panic.",
-               "ತಕ್ಷಣವೇ ಎತ್ತರದ ಭೂಮಿಗೆ ಅಥವಾ ಸಮೀಪದ ಸುರಕ್ಷಿತ ಕೇಂದ್ರಕ್ಕೆ ಹೋಗಿ. / Move to higher ground or nearest safe center immediately."]
-                     user_email_message = f"""
-                    <html>
-                    <body style="font-family: Arial, sans-serif; line-height: 1.6;">
-                        <div style="background-color: #dc3545; color: white; padding: 20px; text-align: center;">
-                            <h1>{STATE_SMS_MAP['Karnataka']}</h1>
-                            <h1>🚨 EMERGENCY FLOOD EVACUATION ALERT</h1>
-                        </div>
-                        <div style="padding: 20px;">
-                            <ol>
-                                {"".join(f"<li>{instruction}</li>" for instruction in instructions)}
-                            </ol>
-                        </div>
-                    </body>
-                    </html>
-                    """
-                     for user in user_emails:
-                            send_email_alert(user['email'], "🚨 ತುರ್ತು ಸೂಚನೆ: ನೆರೆ ಸ್ಥಳಾಂತರ ಅಗತ್ಯವಿದೆ - Flood Evacuation Required", user_email_message, is_html=True)
-                     for user in user_phone:
-                            send_sms_alert_auth(user['name'], user['phone'], state)
-                    
+    elif state == "Karnataka":
+         instructions = [ "ಶಾಂತವಾಗಿರಿ. ಆತಂಕಪಡಬೇಡಿ. / Stay calm. Do not panic.",
+           "ತಕ್ಷಣವೇ ಎತ್ತರದ ಭೂಮಿಗೆ ಅಥವಾ ಸಮೀಪದ ಸುರಕ್ಷಿತ ಕೇಂದ್ರಕ್ಕೆ ಹೋಗಿ. / Move to higher ground or nearest safe center immediately."]
+         user_email_message = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="background-color: #dc3545; color: white; padding: 20px; text-align: center;">
+                <h1>{STATE_SMS_MAP['Karnataka']}</h1>
+                <h1>🚨 EMERGENCY FLOOD EVACUATION ALERT</h1>
+            </div>
+            <div style="padding: 20px;">
+                <ol>
+                    {"".join(f"<li>{instruction}</li>" for instruction in instructions)}
+                </ol>
+            </div>
+        </body>
+        </html>
+        """
+         for user in user_emails:
+                send_email_alert(user['email'], "🚨 ತುರ್ತು ಸೂಚನೆ: ನೆರೆ ಸ್ಥಳಾಂತರ ಅಗತ್ಯವಿದೆ - Flood Evacuation Required", user_email_message, is_html=True)
+         for user in user_phone:
+                send_sms_alert_auth(user['name'], user['phone'], state)
+                
 
 # Updated Email message for user (bilingual with state-specific languages)
 def get_flood_alert_email(user_name, state):

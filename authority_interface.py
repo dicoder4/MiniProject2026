@@ -23,6 +23,7 @@ from dotenv import load_dotenv
 from plotly.subplots import make_subplots
 import plotly.express as px
 import plotly.graph_objects as go
+from db_utils import get_users_collection, get_all_users
 
 
 # Load environment variables
@@ -54,13 +55,8 @@ def show_authority_interface():
     </div>
     """, unsafe_allow_html=True)
 
-    users_path = os.path.join(os.path.dirname(__file__), "users2.json")
-    try:
-        with open(users_path, "r", encoding="utf-8") as f:
-            users = json.load(f)
-    except Exception as e:
-        st.error(f"Could not load users2.json: {e}")
-        users = []
+    # Replace JSON user loading with MongoDB
+    users = get_all_users()
     
     # Initialize session state for simulation data
     if 'simulation_data' not in st.session_state:
@@ -489,21 +485,7 @@ def show_authority_interface():
                         
                         st_folium(flood_map, width=700, height=600)
                         
-                        # Quick action buttons
-                        st.markdown("### 🚨 Quick Actions")
-                        col_act1, col_act2, col_act3 = st.columns(3)
-                        
-                        with col_act1:
-                            if st.button("📢 Alert Citizens", type="secondary"):
-                                st.success("📱 Mass alerts sent to affected areas")
-                        
-                        with col_act2:
-                            if st.button("🚁 Deploy Rescue", type="secondary"):
-                                st.success("🚁 Rescue teams dispatched")
-                        
-                        with col_act3:
-                            if st.button("🏥 Prepare Centers", type="secondary"):
-                                st.success("🏥 Emergency centers activated")
+
                     
                     else:
                         # Show network map without simulation
@@ -1023,28 +1005,28 @@ def show_authority_interface():
                 user_emails = []
                 user_phone = []
 
-                for username, user_data in users.items():
-                    if isinstance(user_data, dict):
-                        email = user_data.get('email')
-                        phone = user_data.get('phone')
-                        address = user_data.get('address')
-                        name = user_data.get('name', username)
+                # MongoDB: users is a list of user dicts
+                for user_data in users:
+                    email = user_data.get('email')
+                    phone = user_data.get('phone')
+                    address = user_data.get('address')
+                    name = user_data.get('name', user_data.get('username', ''))
+                    username = user_data.get('username', '')
 
-                        if email:
-                            user_emails.append({
-                                'email': email,
-                                'name': name,
-                                'username': username,
-                                'address': address
-                            })
-
-                        if phone:
-                            user_phone.append({
-                                'phone': phone,
-                                'name': name,
-                                'username': username,
-                                'address': address
-                            })
+                    if email:
+                        user_emails.append({
+                            'email': email,
+                            'name': name,
+                            'username': username,
+                            'address': address
+                        })
+                    if phone:
+                        user_phone.append({
+                            'phone': phone,
+                            'name': name,
+                            'username': username,
+                            'address': address
+                        })
 
                 if not user_emails:
                     st.warning("⚠️ No user emails found in the system!")
