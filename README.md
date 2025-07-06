@@ -115,7 +115,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Streamlit for the web interface
 - Folium for map visualization
 
-## 👨‍💻 Developers
+## Developers
 
 * Aditri B Ray
 * Anisha Ajit 
