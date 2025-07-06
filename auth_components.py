@@ -115,7 +115,7 @@ def show_login_page():
         with st.form("login_form"):
             username = st.text_input("Username", placeholder="Enter your username")
             password = st.text_input("Password", type="password", placeholder="Enter your password")
-            remember_me = st.checkbox("Remember me for 30 days")
+            
             
             col1, col2 = st.columns(2)
             with col1:
