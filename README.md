@@ -114,3 +114,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Google Maps for traffic integration
 - Streamlit for the web interface
 - Folium for map visualization
+
+## 👨‍💻 Developers
+
+* Aditri B Ray
+* Anisha Ajit 
+* Diya D Shah
+* Contributions welcome via pull requests!
+
+---
